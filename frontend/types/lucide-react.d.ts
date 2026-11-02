@@ -95,6 +95,12 @@ declare module "lucide-react" {
   export const ThumbsUp: LucideIcon;
   export const RefreshCw: LucideIcon;
   export const Download: LucideIcon;
+  export const Image: LucideIcon;
+  export const Play: LucideIcon;
+  export const Pause: LucideIcon;
+  export const Maximize2: LucideIcon;
+  export const Volume2: LucideIcon;
+  export const VolumeX: LucideIcon;
 
   const icons: Record<string, LucideIcon>;
   export default icons;

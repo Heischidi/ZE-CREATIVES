@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Sparkles, Lock, CheckCircle2, ShieldCheck, Eye, EyeOff } from "lucide-react";
@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { authApi } from "@/lib/api";
 
-export default function ActivateAccountPage() {
+function ActivateAccountContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const tokenFromUrl = searchParams.get("token") || "";
@@ -60,63 +60,65 @@ export default function ActivateAccountPage() {
         </span>
       </Link>
 
-      <div className="w-full max-w-md p-8 sm:p-10 rounded-3xl bg-white border border-[#EEEAF5] shadow-[0_16px_40px_rgba(23,21,38,0.06)]">
+      <div className="w-full max-w-md bg-white rounded-3xl p-8 border border-[#EEEAF5] shadow-xl">
         {isSuccess ? (
-          <div className="text-center py-4">
-            <div className="w-14 h-14 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-4">
-              <CheckCircle2 className="w-7 h-7" />
+          <div className="text-center py-6">
+            <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4 border border-emerald-100">
+              <CheckCircle2 className="w-8 h-8" />
             </div>
-            <h2 className="text-xl font-bold text-[#171526]">Account Activated</h2>
-            <p className="text-xs text-[#777386] mt-2 mb-6 leading-relaxed">
-              Your password has been configured and your membership is active. You can now sign in
-              to access your dashboard.
+            <h2 className="text-2xl font-extrabold text-[#171526] mb-2">Account Activated!</h2>
+            <p className="text-sm text-[#777386] mb-6">
+              Your password has been successfully established. You are now officially verified on the Ze: Creatives platform.
             </p>
             <Link href="/sign-in">
-              <Button className="w-full rounded-full">Proceed to Sign In</Button>
+              <Button size="lg" className="w-full rounded-full shadow-md">
+                Proceed to Sign In
+              </Button>
             </Link>
           </div>
         ) : (
           <div>
-            <div className="text-center mb-8">
-              <h1 className="text-2xl font-extrabold text-[#171526]">Activate Membership</h1>
-              <p className="text-xs text-[#777386] mt-1.5">
-                Configure your account credentials using your invitation token
+            <div className="mb-6">
+              <h1 className="text-2xl font-extrabold text-[#171526]">Activate Your Membership</h1>
+              <p className="text-sm text-[#777386] mt-1">
+                Your application has been approved. Establish your secure password to enter Ze:.
               </p>
             </div>
 
             {error && (
-              <div className="p-3.5 mb-6 rounded-2xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-700">
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-600 rounded-xl text-xs font-semibold">
                 {error}
               </div>
             )}
 
             <form onSubmit={handleActivate} className="space-y-4">
               <Input
-                label="Invitation Token"
+                label="Activation Token"
+                type="text"
                 required
                 value={token}
                 onChange={(e) => setToken(e.target.value)}
-                placeholder="Paste your 64-character token"
+                placeholder="Paste your invite code"
               />
 
-              <Input
-                label="Create Password"
-                type={showPassword ? "text" : "password"}
-                required
-                leftIcon={<Lock className="w-4 h-4" />}
-                rightIcon={
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="focus:outline-none"
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                }
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="At least 8 characters"
-              />
+              <div className="relative">
+                <Input
+                  label="Establish Password"
+                  type={showPassword ? "text" : "password"}
+                  required
+                  leftIcon={<Lock className="w-4 h-4" />}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="At least 8 characters"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3.5 top-9 text-[#777386] hover:text-[#171526]"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
 
               <Input
                 label="Confirm Password"
@@ -141,5 +143,13 @@ export default function ActivateAccountPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function ActivateAccountPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-[#FCFAFF]">Loading...</div>}>
+      <ActivateAccountContent />
+    </Suspense>
   );
 }

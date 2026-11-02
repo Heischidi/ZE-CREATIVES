@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
@@ -112,7 +112,7 @@ const mockJobs = [
   },
 ];
 
-export default function JobsPage() {
+function JobsPageContent() {
   const searchParams = useSearchParams();
   const initialSearch = searchParams.get("search") || "";
   const initialCategory = searchParams.get("category") || "";
@@ -319,5 +319,13 @@ export default function JobsPage() {
 
       <Footer />
     </div>
+  );
+}
+
+export default function JobsPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-[#FCFAFF]">Loading positions...</div>}>
+      <JobsPageContent />
+    </Suspense>
   );
 }
