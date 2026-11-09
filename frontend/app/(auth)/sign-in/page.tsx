@@ -33,7 +33,11 @@ export default function SignInPage() {
         router.push("/jobs");
       }
     } catch (err: any) {
-      const msg = err.response?.data?.detail || "Invalid credentials or account pending review.";
+      const msg =
+        err.response?.data?.detail ||
+        (err.request && !err.response
+          ? "Cannot reach the API server. Check NEXT_PUBLIC_API_URL in Vercel and wait 30–60s if Render is waking up."
+          : "Invalid credentials or account pending review.");
       setError(msg);
     } finally {
       setIsLoading(false);
