@@ -1,5 +1,9 @@
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 from typing import Optional
+
+_DEFAULT_SECRET_KEY = "CHANGE_THIS_TO_A_SECURE_256_BIT_RANDOM_KEY"
+_DEFAULT_ADMIN_PASSWORD = "ChangeThisAdminPassword123!"
 
 
 class Settings(BaseSettings):
@@ -13,7 +17,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://zeuser:zepass@localhost:5432/zecreatives"
 
     # JWT
-    SECRET_KEY: str = "CHANGE_THIS_TO_A_SECURE_256_BIT_RANDOM_KEY"
+    SECRET_KEY: str = _DEFAULT_SECRET_KEY
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
@@ -25,6 +29,10 @@ class Settings(BaseSettings):
         "http://localhost:3000",
         "http://127.0.0.1:3000",
     ]
+    # Public URL of the frontend (used for CORS and for links in emails).
+    FRONTEND_URL: str = "http://localhost:3000"
+    # Optional comma-separated extra origins, e.g. preview deployments or a custom domain.
+    EXTRA_ALLOWED_ORIGINS: str = ""
 
     # Email
     SMTP_HOST: str = "localhost"
@@ -47,8 +55,10 @@ class Settings(BaseSettings):
 
     # Admin seed
     ADMIN_SEED_EMAIL: str = "admin@zecreatives.com"
-    ADMIN_SEED_PASSWORD: str = "ChangeThisAdminPassword123!"
+    ADMIN_SEED_PASSWORD: str = _DEFAULT_ADMIN_PASSWORD
     ADMIN_SEED_NAME: str = "Platform Administrator"
+    # Demo accounts/sample job use hardcoded passwords; keep this false in production.
+    SEED_DEMO_DATA: bool = True
 
     # Rate limiting
     RATE_LIMIT_PER_MINUTE: int = 60
@@ -68,6 +78,40 @@ class Settings(BaseSettings):
         env_file_encoding = "utf-8"
         case_sensitive = True
         extra = "ignore"
+
+    @property
+    def frontend_url(self) -> str:
+        return self.FRONTEND_URL.rstrip("/")
+
+    @property
+    def cors_origins(self) -> list[str]:
+        """All allowed CORS origins (deduplicated, no trailing slashes)."""
+        origins = [*self.ALLOWED_ORIGINS, self.FRONTEND_URL]
+        origins += [o for o in self.EXTRA_ALLOWED_ORIGINS.split(",")]
+        cleaned: list[str] = []
+        for origin in origins:
+            origin = origin.strip().rstrip("/")
+            if origin and origin not in cleaned:
+                cleaned.append(origin)
+        return cleaned
+
+    @model_validator(mode="after")
+    def _check_production_settings(self) -> "Settings":
+        """Refuse to start in production with insecure defaults."""
+        if self.ENVIRONMENT.lower() != "production":
+            return self
+        problems = []
+        if self.SECRET_KEY == _DEFAULT_SECRET_KEY or len(self.SECRET_KEY) < 32:
+            problems.append("SECRET_KEY must be set to a random value of at least 32 characters")
+        if self.DEBUG:
+            problems.append("DEBUG must be false")
+        if "localhost" in self.FRONTEND_URL or "127.0.0.1" in self.FRONTEND_URL:
+            problems.append("FRONTEND_URL must be the public frontend URL, not localhost")
+        if "localhost" in self.DATABASE_URL:
+            problems.append("DATABASE_URL must point at the production database")
+        if problems:
+            raise ValueError("Insecure production configuration: " + "; ".join(problems))
+        return self
 
 
 settings = Settings()

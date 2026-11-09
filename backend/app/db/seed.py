@@ -146,6 +146,12 @@ async def seed():
 
         logger.info("✅ Subscription plans seeded.")
 
+        if not settings.SEED_DEMO_DATA:
+            await db.commit()
+            logger.info("ℹ️  SEED_DEMO_DATA=false: skipped demo creative, client and sample job.")
+            logger.info("🎉 Database seeding complete.")
+            return
+
         # ─── Verified Creative (Elena) ──────────────────────────────────────
         existing_creative = await db.scalar(
             select(User).where(User.email == "elena@zecreatives.com")

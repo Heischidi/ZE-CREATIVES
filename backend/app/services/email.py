@@ -56,7 +56,7 @@ class EmailService:
     async def send_invitation(
         self, to_email: str, first_name: str, raw_token: str, role: str
     ) -> bool:
-        activation_url = f"{settings.ALLOWED_ORIGINS[0]}/activate?token={raw_token}"
+        activation_url = f"{settings.frontend_url}/activate?token={raw_token}"
         subject = "You're invited to Ze: Creatives"
         html = f"""
         <div style="font-family: 'Inter', sans-serif; max-width: 600px; margin: 0 auto; color: #171526;">
@@ -83,7 +83,7 @@ class EmailService:
         return await self._send(to_email, subject, html)
 
     async def send_password_reset(self, to_email: str, first_name: str, raw_token: str) -> bool:
-        reset_url = f"{settings.ALLOWED_ORIGINS[0]}/reset-password?token={raw_token}"
+        reset_url = f"{settings.frontend_url}/reset-password?token={raw_token}"
         subject = "Reset your Ze: Creatives password"
         html = f"""
         <div style="font-family: 'Inter', sans-serif; max-width: 600px; margin: 0 auto; color: #171526;">
