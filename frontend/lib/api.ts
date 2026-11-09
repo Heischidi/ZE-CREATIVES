@@ -1,11 +1,15 @@
 import axios from "axios";
 
-const RAW_API_URL = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000")
+const DEFAULT_API_URL =
+  process.env.NODE_ENV === "production"
+    ? "https://ze-creatives.onrender.com"
+    : "http://localhost:8000";
+const RAW_API_URL = (process.env.NEXT_PUBLIC_API_URL || DEFAULT_API_URL)
   .trim()
   .replace(/^['"]+|['"]+$/g, "")
   .replace(/\/+$/, "")
   .replace(/\/api\/v1$/, "");
-const API_URL = RAW_API_URL || "http://localhost:8000";
+const API_URL = RAW_API_URL || DEFAULT_API_URL;
 
 export const api = axios.create({
   baseURL: `${API_URL}/api/v1`,
