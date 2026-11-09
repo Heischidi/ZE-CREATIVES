@@ -2,8 +2,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sess
 from sqlalchemy.orm import DeclarativeBase
 from app.core.config import settings
 
-db_url = settings.DATABASE_URL
-if db_url.startswith("postgresql://"):
+db_url = settings.DATABASE_URL.strip().strip("\"'")
+if db_url.startswith("postgres://"):
+    db_url = db_url.replace("postgres://", "postgresql+asyncpg://", 1)
+elif db_url.startswith("postgresql://"):
     db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
 
 # Remove libpq query parameters that asyncpg doesn't support as URL params

@@ -81,7 +81,7 @@ class Settings(BaseSettings):
 
     @property
     def frontend_url(self) -> str:
-        return self.FRONTEND_URL.rstrip("/")
+        return self.FRONTEND_URL.strip().strip("\"'").rstrip("/")
 
     @property
     def cors_origins(self) -> list[str]:
@@ -90,14 +90,33 @@ class Settings(BaseSettings):
         origins += [o for o in self.EXTRA_ALLOWED_ORIGINS.split(",")]
         cleaned: list[str] = []
         for origin in origins:
-            origin = origin.strip().rstrip("/")
+            origin = origin.strip().strip("\"'").rstrip("/")
             if origin and origin not in cleaned:
                 cleaned.append(origin)
         return cleaned
 
     @model_validator(mode="after")
     def _check_production_settings(self) -> "Settings":
-        """Refuse to start in production with insecure defaults."""
+        """Normalize string env vars and refuse to start in production with insecure defaults."""
+        for attr in (
+            "DATABASE_URL",
+            "SECRET_KEY",
+            "FRONTEND_URL",
+            "EXTRA_ALLOWED_ORIGINS",
+            "ENVIRONMENT",
+            "SMTP_HOST",
+            "SMTP_USER",
+            "SMTP_PASSWORD",
+            "EMAIL_FROM",
+            "S3_ENDPOINT_URL",
+            "S3_ACCESS_KEY",
+            "S3_SECRET_KEY",
+            "S3_BUCKET_NAME",
+            "S3_REGION",
+        ):
+            val = getattr(self, attr, None)
+            if isinstance(val, str):
+                object.__setattr__(self, attr, val.strip().strip("\"'"))
         if self.ENVIRONMENT.lower() != "production":
             return self
         problems = []
