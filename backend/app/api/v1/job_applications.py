@@ -30,7 +30,9 @@ class StatusChangeRequest(BaseModel):
 @router.post("/jobs/{job_id}/apply", status_code=status.HTTP_201_CREATED)
 async def apply_to_job(job_id: UUID, payload: ApplyJobRequest, db: DBSession, current_user: CreativeUser):
     # Verify active job
-    job_res = await db.execute(select(Job).where(Job.id == job_id, Job.status == JobStatus.ACTIVE))
+    job_res = await db.execute(
+        select(Job).options(joinedload(Job.client)).where(Job.id == job_id, Job.status == JobStatus.ACTIVE)
+    )
     job = job_res.scalar_one_or_none()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found or not active.")
@@ -38,7 +40,9 @@ async def apply_to_job(job_id: UUID, payload: ApplyJobRequest, db: DBSession, cu
     prof_res = await db.execute(select(CreativeProfile).where(CreativeProfile.user_id == current_user.id))
     profile = prof_res.scalar_one_or_none()
     if not profile:
-        raise HTTPException(status_code=400, detail="Please complete your creative profile first.")
+        profile = CreativeProfile(user_id=current_user.id)
+        db.add(profile)
+        await db.flush()
 
     # Check already applied
     existing = await db.execute(
@@ -71,6 +75,16 @@ async def apply_to_job(job_id: UUID, payload: ApplyJobRequest, db: DBSession, cu
     )
     db.add(history)
 
+    # Notify Client owner
+    if job.client and job.client.user_id:
+        db.add(Notification(
+            user_id=job.client.user_id,
+            type=NotificationType.NEW_APPLICATION,
+            title=f"New Applicant for {job.title}",
+            message=f"{current_user.first_name} {current_user.last_name} applied to '{job.title}'.",
+            data={"job_id": str(job.id), "creative_profile_id": str(profile.id)},
+        ))
+
     await db.flush()
     return {"message": "Application submitted successfully.", "id": str(app_obj.id)}
 
@@ -98,10 +112,23 @@ async def list_my_applications(db: DBSession, current_user: CreativeUser):
             "id": str(a.id),
             "job_id": str(a.job_id),
             "job_title": a.job.title if a.job else "Unknown Job",
-            "client_name": a.job.client.organisation_name if a.job and a.job.client else "Client",
-            "category": a.job.category.name if a.job and a.job.category else None,
+            "client_name": a.job.client.organisation_name if a.job and a.job.client else "Client Studio",
+            "client_user_id": str(a.job.client.user_id) if a.job and a.job.client and a.job.client.user_id else None,
+            "category": a.job.category.name if a.job and a.job.category else "Design & Creative",
+            "location": a.job.location if a.job else "Remote",
+            "work_arrangement": a.job.work_arrangement.value if a.job and a.job.work_arrangement else "remote",
+            "employment_type": a.job.employment_type.value if a.job and a.job.employment_type else "full_time",
+            "salary_min": a.job.salary_min if a.job else None,
+            "salary_max": a.job.salary_max if a.job else None,
+            "currency": a.job.currency if a.job else "USD",
+            "is_salary_disclosed": a.job.is_salary_disclosed if a.job else True,
             "status": a.status.value if hasattr(a.status, "value") else str(a.status),
+            "cover_letter": a.cover_letter,
+            "custom_answers": a.custom_answers or {},
+            "client_notes": a.client_notes,
+            "portfolio_project_ids": a.portfolio_project_ids or [],
             "created_at": a.created_at.isoformat() if a.created_at else None,
+            "updated_at": a.updated_at.isoformat() if a.updated_at else None,
         }
         for a in apps
     ]

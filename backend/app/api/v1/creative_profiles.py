@@ -36,6 +36,10 @@ class ProfileUpdateRequest(BaseModel):
     github_url: Optional[str] = None
     dribbble_url: Optional[str] = None
     youtube_url: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    phone: Optional[str] = None
+    custom_skills: Optional[List[str]] = None
 
 
 class OnboardingStepRequest(BaseModel):
@@ -93,8 +97,11 @@ def _format_profile(profile: CreativeProfile, detailed: bool = True):
             "youtube": profile.youtube_url,
         },
         "user": {
+            "id": str(profile.user.id) if profile.user else "",
             "first_name": profile.user.first_name if profile.user else "",
             "last_name": profile.user.last_name if profile.user else "",
+            "email": profile.user.email if profile.user else "",
+            "phone": profile.user.phone if profile.user else None,
             "avatar_url": profile.user.avatar_url if profile.user else None,
         } if profile.user else None,
         "categories": [
@@ -169,6 +176,7 @@ async def get_my_creative_profile(db: DBSession, current_user: CreativeUser):
 
 
 @router.patch("/me")
+@router.put("/me", include_in_schema=False)
 async def update_my_creative_profile(payload: ProfileUpdateRequest, db: DBSession, current_user: CreativeUser):
     res = await db.execute(
         select(CreativeProfile)
@@ -185,12 +193,42 @@ async def update_my_creative_profile(payload: ProfileUpdateRequest, db: DBSessio
     if not profile:
         profile = CreativeProfile(user_id=current_user.id)
         db.add(profile)
+        await db.flush()
 
-    for field, val in payload.model_dump(exclude_unset=True).items():
+    data = payload.model_dump(exclude_unset=True)
+    for user_field in ("first_name", "last_name", "phone"):
+        if user_field in data:
+            val = data.pop(user_field)
+            if val is not None:
+                setattr(current_user, user_field, val)
+
+    custom_skills = data.pop("custom_skills", None)
+    for field, val in data.items():
         setattr(profile, field, val)
 
+    if custom_skills is not None:
+        await db.execute(delete(CreativeProfileSkill).where(CreativeProfileSkill.profile_id == profile.id))
+        for sk in custom_skills:
+            clean = sk.strip()
+            if clean:
+                db.add(CreativeProfileSkill(profile_id=profile.id, custom_skill=clean, proficiency_level=5))
+
+    profile.onboarding_completed = True
     await db.flush()
-    return _format_profile(profile, detailed=True)
+
+    # Re-fetch with relationships
+    refreshed = await db.execute(
+        select(CreativeProfile)
+        .where(CreativeProfile.id == profile.id)
+        .options(
+            selectinload(CreativeProfile.user),
+            selectinload(CreativeProfile.categories).selectinload(CreativeProfileCategory.category),
+            selectinload(CreativeProfile.skills).selectinload(CreativeProfileSkill.skill),
+            selectinload(CreativeProfile.work_experiences),
+            selectinload(CreativeProfile.education),
+        )
+    )
+    return _format_profile(refreshed.scalar_one(), detailed=True)
 
 
 @router.post("/me/onboarding")

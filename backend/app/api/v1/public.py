@@ -245,8 +245,10 @@ def _format_job(job: Job, detailed: bool = False) -> dict:
     data = {
         "id": str(job.id),
         "title": job.title,
-        "company_name": job.client.organisation_name if job.client else None,
+        "company_name": job.client.organisation_name if job.client else "Verified Studio",
         "company_logo": job.client.logo_url if job.client else None,
+        "client_user_id": str(job.client.user_id) if job.client and job.client.user_id else None,
+        "is_client_verified": job.client.is_verified if job.client else True,
         "category": {"id": str(job.category.id), "name": job.category.name} if job.category else None,
         "location": job.location,
         "country": job.country,
@@ -258,6 +260,11 @@ def _format_job(job: Job, detailed: bool = False) -> dict:
         "currency": job.currency,
         "is_salary_disclosed": job.is_salary_disclosed,
         "is_featured": job.is_featured,
+        "description": job.description,
+        "responsibilities": job.responsibilities,
+        "requirements": job.requirements,
+        "preferred_skills": job.preferred_skills,
+        "custom_questions": job.custom_questions or [],
         "application_deadline": job.application_deadline.isoformat() if job.application_deadline else None,
         "published_at": job.published_at.isoformat() if job.published_at else None,
         "views_count": job.views_count,
@@ -265,11 +272,6 @@ def _format_job(job: Job, detailed: bool = False) -> dict:
     }
     if detailed:
         data.update({
-            "description": job.description,
-            "responsibilities": job.responsibilities,
-            "requirements": job.requirements,
-            "preferred_skills": job.preferred_skills,
-            "custom_questions": job.custom_questions,
             "skills": [
                 {"skill_id": str(s.skill_id) if s.skill_id else None, "custom": s.custom_skill, "required": s.is_required}
                 for s in (job.skills or [])

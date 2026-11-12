@@ -47,8 +47,7 @@ class ReviewApplicationRequest(BaseModel):
 
 # ─── Public Endpoints ─────────────────────────────────────────────────────────
 
-@router.post("", status_code=status.HTTP_201_CREATED)
-@router.post("/", status_code=status.HTTP_201_CREATED, include_in_schema=False)
+@router.post("/", status_code=status.HTTP_201_CREATED)
 async def submit_creative_application(payload: CreativeApplicationCreate, db: DBSession):
     """
     Public endpoint — anyone can submit a creative application.
@@ -97,8 +96,7 @@ async def submit_creative_application(payload: CreativeApplicationCreate, db: DB
 
 # ─── Admin Endpoints ──────────────────────────────────────────────────────────
 
-@router.get("")
-@router.get("/", include_in_schema=False)
+@router.get("/")
 async def list_creative_applications(
     db: DBSession,
     admin: AdminUser,

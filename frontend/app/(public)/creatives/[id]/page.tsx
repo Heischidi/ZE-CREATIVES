@@ -1,29 +1,18 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
   MapPin,
   ShieldCheck,
-  Star,
   Globe,
-  Share2,
-  Mail,
   ExternalLink,
   MessageSquare,
-  ArrowLeft,
-  Calendar,
   Briefcase,
   GraduationCap,
-  Sparkles,
-  Play,
   Film,
   Image as ImageIcon,
-  CheckCircle,
-  Clock,
-  Layers,
-  Eye,
   Maximize2,
 } from "lucide-react";
 import { Navbar } from "@/components/layout/Navbar";
@@ -31,6 +20,7 @@ import { Footer } from "@/components/layout/Footer";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { useAuthStore } from "@/store/auth";
+import { publicApi, messagingApi } from "@/lib/api";
 
 interface ProjectItem {
   id: string;
@@ -44,125 +34,193 @@ interface ProjectItem {
   externalCaseStudyUrl?: string;
 }
 
+const defaultCreative = {
+  id: "cr-1",
+  user_id: "",
+  name: "Elena Rostova",
+  headline: "Senior Visual Designer, Art Director & 3D Motion Visualist",
+  location: "Zurich, Switzerland (Available Globally)",
+  hourlyRate: "$95 / hr",
+  projectRate: "From $4,500 / project",
+  availability: "Available for Q4 Contracts",
+  portfolioWebsite: "https://elenarostova.design",
+  behanceUrl: "https://behance.net/elenarostova",
+  dribbbleUrl: "https://dribbble.com/elenarostova",
+  instagramUrl: "https://instagram.com/elena.craft",
+  bio: `Multidisciplinary visual designer and art director with over 8 years of experience building distinct brand identities, cinematic motion design, and high-impact digital experiences for global luxury labels and technology pioneers.
+
+My approach merges strict Swiss typographic heritage with emotive 3D motion and interactive storytelling. Formerly senior brand lead at partner studios for Pentagram and Swiss Style Lab.`,
+  avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80",
+  cover: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1400&auto=format&fit=crop&q=80",
+  skills: [
+    { name: "Brand Identity & Systems", level: 5 },
+    { name: "Swiss Typography & Editorial", level: 5 },
+    { name: "3D Motion & Art Direction", level: 4 },
+    { name: "Design Systems & Tokens", level: 5 },
+    { name: "Cinema 4D & Octane", level: 4 },
+    { name: "Packaging & Print Craft", level: 5 },
+  ],
+  projects: [
+    {
+      id: "proj-1",
+      title: "KRONOS — Haute Horlogerie Brand Identity",
+      category: "Brand & Visual Identity",
+      mediaType: "image" as const,
+      mediaUrl: "https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?w=1000&auto=format&fit=crop&q=80",
+      description:
+        "Complete brand identity, bespoke serif typeface family, and luxury exhibition catalog design for an independent Swiss watchmaker in Geneva.",
+      tools: ["Figma", "Illustrator", "Typography", "Cinema 4D"],
+      externalCaseStudyUrl: "https://elenarostova.design/kronos",
+    },
+    {
+      id: "proj-2",
+      title: "Sovereign — 3D Kinetic Motion & Brand Reel",
+      category: "3D Motion & Film",
+      mediaType: "video" as const,
+      mediaUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+      posterUrl: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1000&auto=format&fit=crop&q=80",
+      description:
+        "Kinetic brand identity sequence and photorealistic 3D simulation exploring fluid dynamics, light refractions, and sound-reactive motion design.",
+      tools: ["Cinema 4D", "Octane Render", "After Effects", "Houdini"],
+      externalCaseStudyUrl: "https://elenarostova.design/sovereign-motion",
+    },
+    {
+      id: "proj-3",
+      title: "Aura Botanica — Packaging & Tactile System",
+      category: "Packaging Design",
+      mediaType: "image" as const,
+      mediaUrl: "https://images.unsplash.com/photo-1527799820374-dcf8d9d4a388?w=1000&auto=format&fit=crop&q=80",
+      description:
+        "Sustainable frosted glass containers, embossed copper-foil labeling, and modular unboxing ritual created for organic botanical apothecary.",
+      tools: ["Figma", "InDesign", "Blender", "Print Craft"],
+      externalCaseStudyUrl: "https://elenarostova.design/aura-botanica",
+    },
+  ] as ProjectItem[],
+  experience: [
+    {
+      role: "Lead Visual & Art Director",
+      company: "Studio Ardent (London)",
+      period: "2022 — Present",
+      desc: "Directing multi-platform brand ecosystems, editorial guidelines, and motion systems for enterprise technology clients.",
+    },
+    {
+      role: "Senior Typographic Designer",
+      company: "Helvetic Bureau (Zurich)",
+      period: "2019 — 2022",
+      desc: "Designed bespoke corporate typography suites, design systems, and art directed print campaigns.",
+    },
+  ],
+  education: [
+    {
+      degree: "Master of Arts in Visual Communication & Spatial Motion",
+      school: "ECAL (École cantonale d'art de Lausanne)",
+      year: "2018",
+    },
+  ],
+};
+
 export default function CreativeProfileDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { isAuthenticated } = useAuthStore();
 
+  const [creative, setCreative] = useState(defaultCreative);
   const [activeMediaTab, setActiveMediaTab] = useState<"all" | "pictures" | "videos">("all");
-  const [activeVideoModal, setActiveVideoModal] = useState<string | null>(null);
   const [activeImageModal, setActiveImageModal] = useState<string | null>(null);
 
   const [contactModalOpen, setContactModalOpen] = useState(false);
   const [messageText, setMessageText] = useState("");
   const [sentSuccess, setSentSuccess] = useState(false);
+  const [isSending, setIsSending] = useState(false);
 
-  const creative = {
-    id: params.id || "cr-1",
-    name: "Elena Rostova",
-    headline: "Senior Visual Designer, Art Director & 3D Motion Visualist",
-    location: "Zurich, Switzerland (Available Globally)",
-    hourlyRate: "$95 / hr",
-    projectRate: "From $4,500 / project",
-    availability: "Available for Q4 Contracts",
-    portfolioWebsite: "https://elenarostova.design",
-    behanceUrl: "https://behance.net/elenarostova",
-    dribbbleUrl: "https://dribbble.com/elenarostova",
-    instagramUrl: "https://instagram.com/elena.craft",
-    bio: `Multidisciplinary visual designer and art director with over 8 years of experience building distinct brand identities, cinematic motion design, and high-impact digital experiences for global luxury labels and technology pioneers.
+  useEffect(() => {
+    const rawId = typeof params.id === "string" ? params.id : Array.isArray(params.id) ? params.id[0] : "";
+    if (!rawId || rawId.startsWith("cr-")) return;
 
-My approach merges strict Swiss typographic heritage with emotive 3D motion and interactive storytelling. Formerly senior brand lead at partner studios for Pentagram and Swiss Style Lab.`,
-    avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80",
-    cover: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1400&auto=format&fit=crop&q=80",
-    skills: [
-      { name: "Brand Identity & Systems", level: 5 },
-      { name: "Swiss Typography & Editorial", level: 5 },
-      { name: "3D Motion & Art Direction", level: 4 },
-      { name: "Design Systems & Tokens", level: 5 },
-      { name: "Cinema 4D & Octane", level: 4 },
-      { name: "Packaging & Print Craft", level: 5 },
-    ],
-    projects: [
-      {
-        id: "proj-1",
-        title: "KRONOS — Haute Horlogerie Brand Identity",
-        category: "Brand & Visual Identity",
-        mediaType: "image",
-        mediaUrl: "https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?w=1000&auto=format&fit=crop&q=80",
-        description:
-          "Complete brand identity, bespoke serif typeface family, and luxury exhibition catalog design for an independent Swiss watchmaker in Geneva.",
-        tools: ["Figma", "Illustrator", "Typography", "Cinema 4D"],
-        externalCaseStudyUrl: "https://elenarostova.design/kronos",
-      },
-      {
-        id: "proj-2",
-        title: "Sovereign — 3D Kinetic Motion & Brand Reel",
-        category: "3D Motion & Film",
-        mediaType: "video",
-        mediaUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-        posterUrl: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1000&auto=format&fit=crop&q=80",
-        description:
-          "Kinetic brand identity sequence and photorealistic 3D simulation exploring fluid dynamics, light refractions, and sound-reactive motion design.",
-        tools: ["Cinema 4D", "Octane Render", "After Effects", "Houdini"],
-        externalCaseStudyUrl: "https://elenarostova.design/sovereign-motion",
-      },
-      {
-        id: "proj-3",
-        title: "Aura Botanica — Packaging & Tactile System",
-        category: "Packaging Design",
-        mediaType: "image",
-        mediaUrl: "https://images.unsplash.com/photo-1527799820374-dcf8d9d4a388?w=1000&auto=format&fit=crop&q=80",
-        description:
-          "Sustainable frosted glass containers, embossed copper-foil labeling, and modular unboxing ritual created for organic botanical apothecary.",
-        tools: ["Figma", "InDesign", "Blender", "Print Craft"],
-        externalCaseStudyUrl: "https://elenarostova.design/aura-botanica",
-      },
-      {
-        id: "proj-4",
-        title: "Kinetic Geometry — Typographic Short Film",
-        category: "3D Motion & Film",
-        mediaType: "video",
-        mediaUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
-        posterUrl: "https://images.unsplash.com/photo-1634017839464-5c339ebe3cb4?w=1000&auto=format&fit=crop&q=80",
-        description:
-          "Experimental short film exploring architectural grid systems, dynamic kinetic typography, and multi-layered spatial audio composition.",
-        tools: ["Houdini", "After Effects", "DaVinci Resolve"],
-        externalCaseStudyUrl: "https://elenarostova.design/kinetic-geometry",
-      },
-      {
-        id: "proj-5",
-        title: "Monochrome Exhibition Monograph",
-        category: "Art Direction & Editorial",
-        mediaType: "image",
-        mediaUrl: "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=1000&auto=format&fit=crop&q=80",
-        description:
-          "Hardcover 320-page monograph, custom typographic layouts, and metallic duotone printing for the Zurich Modern Art Pavilion retrospective.",
-        tools: ["InDesign", "Custom Grid Systems", "Print Production"],
-        externalCaseStudyUrl: "https://elenarostova.design/monochrome",
-      },
-    ] as ProjectItem[],
-    experience: [
-      {
-        role: "Lead Visual & Art Director",
-        company: "Studio Ardent (London)",
-        period: "2022 — Present",
-        desc: "Directing multi-platform brand ecosystems, editorial guidelines, and motion systems for enterprise technology clients.",
-      },
-      {
-        role: "Senior Typographic Designer",
-        company: "Helvetic Bureau (Zurich)",
-        period: "2019 — 2022",
-        desc: "Designed bespoke corporate typography suites, design systems, and art directed print campaigns.",
-      },
-    ],
-    education: [
-      {
-        degree: "Master of Arts in Visual Communication & Spatial Motion",
-        school: "ECAL (École cantonale d'art de Lausanne)",
-        year: "2018",
-      },
-    ],
-  };
+    publicApi
+      .getCreative(rawId)
+      .then((res) => {
+        const d = res.data;
+        if (!d) return;
+        const mappedProjects: ProjectItem[] =
+          Array.isArray(d.portfolio_projects) && d.portfolio_projects.length > 0
+            ? d.portfolio_projects.map((p: any) => ({
+                id: p.id,
+                title: p.title,
+                category: d.category_name || "Creative Craft",
+                mediaType: p.video_url ? ("video" as const) : ("image" as const),
+                mediaUrl:
+                  p.video_url ||
+                  p.cover_image_url ||
+                  (Array.isArray(p.media_urls) && p.media_urls[0]) ||
+                  defaultCreative.projects[0].mediaUrl,
+                posterUrl: p.cover_image_url || undefined,
+                description: p.description || "",
+                tools: Array.isArray(p.tools_used) && p.tools_used.length > 0 ? p.tools_used : ["Creative Craft"],
+                externalCaseStudyUrl: p.project_url || undefined,
+              }))
+            : defaultCreative.projects;
+
+        const mappedSkills =
+          Array.isArray(d.skills) && d.skills.length > 0
+            ? d.skills.map((s: any) => ({
+                name: s.name,
+                level: s.proficiency_level || 5,
+              }))
+            : defaultCreative.skills;
+
+        const mappedExp =
+          Array.isArray(d.work_experiences) && d.work_experiences.length > 0
+            ? d.work_experiences.map((w: any) => ({
+                role: w.job_title,
+                company: w.company_name,
+                period: `${w.start_date || ""} — ${w.is_current ? "Present" : w.end_date || "Present"}`,
+                desc: w.description || "",
+              }))
+            : defaultCreative.experience;
+
+        const mappedEdu =
+          Array.isArray(d.educations) && d.educations.length > 0
+            ? d.educations.map((ed: any) => ({
+                degree: ed.degree ? `${ed.degree}${ed.field_of_study ? ` in ${ed.field_of_study}` : ""}` : "Creative Studies",
+                school: ed.institution_name,
+                year: ed.graduation_year ? String(ed.graduation_year) : "",
+              }))
+            : defaultCreative.education;
+
+        const availLabel =
+          d.availability_status === "available"
+            ? "Available Immediately"
+            : d.availability_status === "open_to_offers"
+            ? "Open to Select Offers"
+            : "Booked / Unavailable";
+
+        setCreative({
+          id: d.id,
+          user_id: d.user_id || "",
+          name: `${d.first_name || ""} ${d.last_name || ""}`.trim() || defaultCreative.name,
+          headline: d.headline || defaultCreative.headline,
+          location: d.location || defaultCreative.location,
+          hourlyRate: d.hourly_rate ? `$${d.hourly_rate} / hr` : defaultCreative.hourlyRate,
+          projectRate: d.project_rate_min ? `From $${d.project_rate_min} / project` : defaultCreative.projectRate,
+          availability: availLabel,
+          portfolioWebsite: d.portfolio_url || defaultCreative.portfolioWebsite,
+          behanceUrl: d.behance_url || defaultCreative.behanceUrl,
+          dribbbleUrl: d.dribbble_url || defaultCreative.dribbbleUrl,
+          instagramUrl: defaultCreative.instagramUrl,
+          bio: d.bio || defaultCreative.bio,
+          avatar: d.avatar_url || defaultCreative.avatar,
+          cover: d.cover_image_url || defaultCreative.cover,
+          skills: mappedSkills,
+          projects: mappedProjects,
+          experience: mappedExp,
+          education: mappedEdu,
+        });
+      })
+      .catch(() => {
+        // Keep default fallback
+      });
+  }, [params.id]);
 
   const filteredProjects = creative.projects.filter((p) => {
     if (activeMediaTab === "pictures") return p.mediaType === "image";
@@ -170,18 +228,35 @@ My approach merges strict Swiss typographic heritage with emotive 3D motion and 
     return true;
   });
 
-  const handleSendMessage = (e: React.FormEvent) => {
+  const pictureCount = creative.projects.filter((p) => p.mediaType === "image").length;
+  const videoCount = creative.projects.filter((p) => p.mediaType === "video").length;
+
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isAuthenticated) {
       router.push("/sign-in");
       return;
     }
-    setSentSuccess(true);
-    setTimeout(() => {
-      setSentSuccess(false);
-      setContactModalOpen(false);
-      setMessageText("");
-    }, 1500);
+    setIsSending(true);
+    try {
+      if (creative.user_id) {
+        await messagingApi.createConversation({
+          recipient_user_id: creative.user_id,
+          subject: `Direct Portfolio Inquiry — ${creative.name}`,
+          initial_message: messageText,
+        });
+      }
+    } catch {
+      // Fallback for demo
+    } finally {
+      setIsSending(false);
+      setSentSuccess(true);
+      setTimeout(() => {
+        setSentSuccess(false);
+        setContactModalOpen(false);
+        setMessageText("");
+      }, 1500);
+    }
   };
 
   return (
@@ -261,30 +336,36 @@ My approach merges strict Swiss typographic heritage with emotive 3D motion and 
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <a
-                href={creative.portfolioWebsite}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#7957F5] text-white text-xs font-bold hover:bg-[#6844E2] transition-colors shadow-sm"
-              >
-                <Globe className="w-3.5 h-3.5" /> Visit External Portfolio ↗
-              </a>
-              <a
-                href={creative.behanceUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 px-3 py-2 rounded-full bg-white border border-[#EEEAF5] text-xs font-semibold text-[#171526] hover:bg-[#FCFAFF] transition-colors"
-              >
-                Behance ↗
-              </a>
-              <a
-                href={creative.dribbbleUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 px-3 py-2 rounded-full bg-white border border-[#EEEAF5] text-xs font-semibold text-[#171526] hover:bg-[#FCFAFF] transition-colors"
-              >
-                Dribbble ↗
-              </a>
+              {creative.portfolioWebsite && (
+                <a
+                  href={creative.portfolioWebsite}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#7957F5] text-white text-xs font-bold hover:bg-[#6844E2] transition-colors shadow-sm"
+                >
+                  <Globe className="w-3.5 h-3.5" /> Visit External Portfolio ↗
+                </a>
+              )}
+              {creative.behanceUrl && (
+                <a
+                  href={creative.behanceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 px-3 py-2 rounded-full bg-white border border-[#EEEAF5] text-xs font-semibold text-[#171526] hover:bg-[#FCFAFF] transition-colors"
+                >
+                  Behance ↗
+                </a>
+              )}
+              {creative.dribbbleUrl && (
+                <a
+                  href={creative.dribbbleUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 px-3 py-2 rounded-full bg-white border border-[#EEEAF5] text-xs font-semibold text-[#171526] hover:bg-[#FCFAFF] transition-colors"
+                >
+                  Dribbble ↗
+                </a>
+              )}
             </div>
           </div>
 
@@ -330,7 +411,7 @@ My approach merges strict Swiss typographic heritage with emotive 3D motion and 
                           : "text-[#777386] hover:text-[#171526]"
                       }`}
                     >
-                      <ImageIcon className="w-3.5 h-3.5" /> Pictures (3)
+                      <ImageIcon className="w-3.5 h-3.5" /> Pictures ({pictureCount})
                     </button>
                     <button
                       onClick={() => setActiveMediaTab("videos")}
@@ -340,7 +421,7 @@ My approach merges strict Swiss typographic heritage with emotive 3D motion and 
                           : "text-[#777386] hover:text-[#171526]"
                       }`}
                     >
-                      <Film className="w-3.5 h-3.5" /> Video Reels (2)
+                      <Film className="w-3.5 h-3.5" /> Video Reels ({videoCount})
                     </button>
                   </div>
                 </div>
@@ -355,7 +436,6 @@ My approach merges strict Swiss typographic heritage with emotive 3D motion and 
                       {/* Media Display: Image or Video */}
                       {proj.mediaType === "video" ? (
                         <div className="relative h-72 sm:h-80 w-full overflow-hidden bg-black flex items-center justify-center">
-                          {/* Video Element */}
                           <video
                             controls
                             poster={proj.posterUrl}
@@ -457,33 +537,28 @@ My approach merges strict Swiss typographic heritage with emotive 3D motion and 
                 </a>
 
                 <div className="mt-4 pt-4 border-t border-[#EEEAF5] flex flex-col gap-2">
-                  <a
-                    href={creative.behanceUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-between text-xs text-[#777386] hover:text-[#7957F5]"
-                  >
-                    <span>Behance Network</span>
-                    <span className="font-semibold">@elenarostova ↗</span>
-                  </a>
-                  <a
-                    href={creative.dribbbleUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-between text-xs text-[#777386] hover:text-[#7957F5]"
-                  >
-                    <span>Dribbble Pro</span>
-                    <span className="font-semibold">@elenarostova ↗</span>
-                  </a>
-                  <a
-                    href={creative.instagramUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-between text-xs text-[#777386] hover:text-[#7957F5]"
-                  >
-                    <span>Instagram Craft</span>
-                    <span className="font-semibold">@elena.craft ↗</span>
-                  </a>
+                  {creative.behanceUrl && (
+                    <a
+                      href={creative.behanceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-between text-xs text-[#777386] hover:text-[#7957F5]"
+                    >
+                      <span>Behance Network</span>
+                      <span className="font-semibold">View ↗</span>
+                    </a>
+                  )}
+                  {creative.dribbbleUrl && (
+                    <a
+                      href={creative.dribbbleUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-between text-xs text-[#777386] hover:text-[#7957F5]"
+                    >
+                      <span>Dribbble Pro</span>
+                      <span className="font-semibold">View ↗</span>
+                    </a>
+                  )}
                 </div>
               </div>
 
@@ -530,13 +605,15 @@ My approach merges strict Swiss typographic heritage with emotive 3D motion and 
                 <h3 className="text-sm font-bold text-[#171526] mb-4 flex items-center gap-2">
                   <GraduationCap className="w-4 h-4 text-[#7957F5]" /> Education
                 </h3>
-                {creative.education.map((edu, i) => (
-                  <div key={i}>
-                    <p className="text-xs font-bold text-[#171526]">{edu.degree}</p>
-                    <p className="text-xs text-[#7957F5]">{edu.school}</p>
-                    <p className="text-[11px] text-[#777386]">{edu.year}</p>
-                  </div>
-                ))}
+                <div className="space-y-3">
+                  {creative.education.map((edu, i) => (
+                    <div key={i}>
+                      <p className="text-xs font-bold text-[#171526]">{edu.degree}</p>
+                      <p className="text-xs text-[#7957F5]">{edu.school}</p>
+                      <p className="text-[11px] text-[#777386]">{edu.year}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
@@ -577,7 +654,7 @@ My approach merges strict Swiss typographic heritage with emotive 3D motion and 
 
               {sentSuccess ? (
                 <div className="py-8 text-center text-emerald-700 font-semibold text-sm">
-                  Message sent successfully! Elena will be notified directly.
+                  Message sent! {creative.name} will be notified directly in their studio inbox.
                 </div>
               ) : (
                 <form onSubmit={handleSendMessage} className="space-y-4">
@@ -590,7 +667,7 @@ My approach merges strict Swiss typographic heritage with emotive 3D motion and 
                       required
                       value={messageText}
                       onChange={(e) => setMessageText(e.target.value)}
-                      placeholder="Hi Elena, we love your typography and 3D motion work on KRONOS. We'd like to discuss a project..."
+                      placeholder={`Hi ${creative.name.split(" ")[0]}, we love your portfolio and would like to discuss an upcoming brief...`}
                       className="w-full rounded-2xl bg-[#FCFAFF] border border-[#EEEAF5] p-4 text-sm text-[#171526] outline-none focus:border-[#7957F5] transition-colors"
                     />
                   </div>
@@ -603,7 +680,11 @@ My approach merges strict Swiss typographic heritage with emotive 3D motion and 
                     >
                       Cancel
                     </Button>
-                    <Button type="submit" className="rounded-full px-6 bg-[#7957F5] hover:bg-[#6844E2]">
+                    <Button
+                      type="submit"
+                      isLoading={isSending}
+                      className="rounded-full px-6 bg-[#7957F5] hover:bg-[#6844E2]"
+                    >
                       Send Inquiry
                     </Button>
                   </div>

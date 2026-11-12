@@ -215,11 +215,13 @@ export const jobApplicationsApi = {
   unsaveJob: (jobId: string) => api.delete(`/jobs/${jobId}/save`),
 };
 
-// ─── Creative Profile ─────────────────────────────────────────────────────────
+// ─── Creative Profile & Portfolio ─────────────────────────────────────────────
 export const creativeProfileApi = {
   get: () => api.get("/creative-profiles/me"),
   update: (data: Record<string, unknown>) =>
     api.patch("/creative-profiles/me", data),
+  setCategories: (categoryIds: string[]) =>
+    api.post("/creative-profiles/me/categories", categoryIds),
   addExperience: (data: Record<string, unknown>) =>
     api.post("/creative-profiles/me/work-experience", data),
   deleteExperience: (id: string) =>
@@ -228,12 +230,13 @@ export const creativeProfileApi = {
     api.post("/creative-profiles/me/education", data),
   deleteEducation: (id: string) =>
     api.delete(`/creative-profiles/me/education/${id}`),
+  listPortfolioProjects: () => api.get("/portfolio"),
   addPortfolioProject: (data: Record<string, unknown>) =>
-    api.post("/portfolio/projects", data),
+    api.post("/portfolio", data),
   updatePortfolioProject: (id: string, data: Record<string, unknown>) =>
-    api.put(`/portfolio/projects/${id}`, data),
+    api.patch(`/portfolio/${id}`, data),
   deletePortfolioProject: (id: string) =>
-    api.delete(`/portfolio/projects/${id}`),
+    api.delete(`/portfolio/${id}`),
 };
 
 // ─── Client Profile ───────────────────────────────────────────────────────────

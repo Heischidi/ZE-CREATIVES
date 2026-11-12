@@ -1,15 +1,11 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   Search,
   MapPin,
   ShieldCheck,
-  Star,
-  ChevronRight,
-  Filter,
-  Sparkles,
   ExternalLink,
   Film,
   Image as ImageIcon,
@@ -18,6 +14,7 @@ import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { publicApi } from "@/lib/api";
 
 const categories = [
   "All Disciplines",
@@ -128,16 +125,71 @@ const mockCreatives = [
   },
 ];
 
-
 export default function CreativesDirectoryPage() {
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All Disciplines");
+  const [creatives, setCreatives] = useState(mockCreatives);
 
-  const filteredCreatives = mockCreatives.filter((cr) => {
-    if (search && !cr.name.toLowerCase().includes(search.toLowerCase()) && !cr.headline.toLowerCase().includes(search.toLowerCase())) {
+  useEffect(() => {
+    publicApi
+      .getCreatives()
+      .then((res) => {
+        const items = res.data?.items;
+        if (Array.isArray(items) && items.length > 0) {
+          const mappedLive = items.map((c: any) => {
+            const fullName = `${c.first_name || ""} ${c.last_name || ""}`.trim() || "Creative";
+            const projs = Array.isArray(c.portfolio_projects) ? c.portfolio_projects : [];
+            const hasVideo = projs.some((p: any) => Boolean(p.video_url));
+            return {
+              id: c.id,
+              name: fullName,
+              headline: c.headline || "Verified Creative Specialist",
+              category: c.category_name || "Brand & Identity",
+              location: c.location || "Remote",
+              rate: c.hourly_rate ? `$${c.hourly_rate}/hr` : "$95/hr",
+              avatar:
+                c.avatar_url ||
+                "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
+              cover:
+                c.cover_image_url ||
+                "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600&auto=format&fit=crop&q=80",
+              tags:
+                Array.isArray(c.skills) && c.skills.length > 0
+                  ? c.skills.map((s: any) => s.name).slice(0, 4)
+                  : ["Brand Identity", "Typography", "Craft"],
+              availability:
+                c.availability_status === "available"
+                  ? "Available Now"
+                  : c.availability_status === "open_to_offers"
+                  ? "Taking Inquiries"
+                  : "Booked",
+              rating: 4.98,
+              portfolioUrl: c.portfolio_url || "https://elenarostova.design",
+              hasVideoReel: hasVideo,
+              photoCount: Math.max(projs.length, 4),
+            };
+          });
+          const liveNames = new Set(mappedLive.map((m: any) => m.name.toLowerCase()));
+          const remainingMocks = mockCreatives.filter(
+            (m) => !liveNames.has(m.name.toLowerCase())
+          );
+          setCreatives([...mappedLive, ...remainingMocks]);
+        }
+      })
+      .catch(() => {
+        // Keep mock fallback
+      });
+  }, []);
+
+  const filteredCreatives = creatives.filter((cr) => {
+    if (
+      search &&
+      !cr.name.toLowerCase().includes(search.toLowerCase()) &&
+      !cr.headline.toLowerCase().includes(search.toLowerCase())
+    ) {
       return false;
     }
-    if (selectedCategory !== "All Disciplines" && cr.category !== selectedCategory) {
+    if (selectedCategory !== "All Disciplines" && !cr.category.toLowerCase().includes(selectedCategory.split(" ")[0].toLowerCase())) {
       return false;
     }
     return true;
@@ -238,7 +290,7 @@ export default function CreativesDirectoryPage() {
                     <p className="text-xs text-[#7957F5] font-medium mb-3">{cr.category}</p>
 
                     <div className="flex flex-wrap gap-1 mb-3">
-                      {cr.tags.map((tag) => (
+                      {cr.tags.map((tag: string) => (
                         <span
                           key={tag}
                           className="px-2.5 py-0.5 rounded-md bg-[#FCFAFF] border border-[#EEEAF5] text-[10px] text-[#777386]"
@@ -257,7 +309,7 @@ export default function CreativesDirectoryPage() {
                           </span>
                         )}
                         <span className="flex items-center gap-1 text-[10px] font-semibold text-zinc-700 bg-zinc-100 px-2 py-0.5 rounded-md">
-                          <ImageIcon className="w-3 h-3" /> {cr.photoCount} Photos
+                          <ImageIcon className="w-3 h-3" /> {cr.photoCount} Works
                         </span>
                       </div>
 

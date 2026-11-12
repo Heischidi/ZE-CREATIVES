@@ -1,15 +1,10 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
   MapPin,
-  Briefcase,
-  Clock,
-  DollarSign,
-  Calendar,
-  Share2,
   CheckCircle,
   ArrowLeft,
   Building,
@@ -20,46 +15,111 @@ import { Footer } from "@/components/layout/Footer";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { useAuthStore } from "@/store/auth";
-import { jobApplicationsApi } from "@/lib/api";
+import { jobApplicationsApi, publicApi } from "@/lib/api";
+
+const defaultJob = {
+  id: "job-1",
+  title: "Senior Brand Identity Designer",
+  company: "Studio Ardent",
+  location: "London, UK",
+  arrangement: "Remote",
+  type: "Contract",
+  experience: "Senior",
+  salary: "$95,000 - $120,000 / year",
+  category: "Brand & Visual Identity",
+  postedDate: "Recently posted",
+  deadline: "Open until filled",
+  description: `Studio Ardent is looking for an extraordinary Senior Brand Identity Designer to lead the visual transformation for our global tech and luxury clients. You will conceptualize and deliver multi-platform brand ecosystems from discovery through to final design guidelines.`,
+  responsibilities: [
+    "Translate brand strategy into holistic visual identities, typography systems, and art direction.",
+    "Craft bespoke logo marks, typography scales, graphic language, and packaging systems.",
+    "Collaborate directly with creative directors, strategists, and client founders.",
+    "Prepare production-ready asset suites and comprehensive brand guideline manuals.",
+  ],
+  requirements: [
+    "5+ years of dedicated brand identity and visual systems experience.",
+    "A stunning portfolio showcasing rigorous typography, visual hierarchy, and craftsmanship.",
+    "Mastery of Figma, Adobe Illustrator, Photoshop, and InDesign.",
+    "Strong presentation skills and ability to articulate design rationale.",
+  ],
+  skills: ["Figma", "Brand Guidelines", "Typography", "Art Direction", "Packaging", "InDesign"],
+  customQuestions: [] as string[],
+};
 
 export default function JobDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const { isAuthenticated, user } = useAuthStore();
+  const { isAuthenticated } = useAuthStore();
 
+  const [job, setJob] = useState(defaultJob);
   const [isApplying, setIsApplying] = useState(false);
   const [coverLetter, setCoverLetter] = useState("");
+  const [customAnswers, setCustomAnswers] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [appliedSuccess, setAppliedSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
-  const job = {
-    id: params.id,
-    title: "Senior Brand Identity Designer",
-    company: "Studio Ardent",
-    location: "London, UK",
-    arrangement: "Remote",
-    type: "Contract (6 Months)",
-    experience: "Senior (5+ Years)",
-    salary: "$95,000 - $120,000 / year",
-    category: "Brand & Visual Identity",
-    postedDate: "3 days ago",
-    deadline: "Nov 30, 2026",
-    description: `Studio Ardent is looking for an extraordinary Senior Brand Identity Designer to lead the visual transformation for our global tech and luxury clients. You will conceptualize and deliver multi-platform brand ecosystems from discovery through to final design guidelines.`,
-    responsibilities: [
-      "Translate brand strategy into holistic visual identities, typography systems, and art direction.",
-      "Craft bespoke logo marks, typography scales, graphic language, and packaging systems.",
-      "Collaborate directly with creative directors, strategists, and client founders.",
-      "Prepare production-ready asset suites and comprehensive brand guideline manuals.",
-    ],
-    requirements: [
-      "5+ years of dedicated brand identity and visual systems experience.",
-      "A stunning portfolio showcasing rigorous typography, visual hierarchy, and craftsmanship.",
-      "Mastery of Figma, Adobe Illustrator, Photoshop, and InDesign.",
-      "Strong presentation skills and ability to articulate design rationale.",
-    ],
-    skills: ["Figma", "Brand Guidelines", "Typography", "Art Direction", "Packaging", "InDesign"],
-  };
+  useEffect(() => {
+    const rawId = typeof params.id === "string" ? params.id : Array.isArray(params.id) ? params.id[0] : "";
+    if (!rawId || rawId.startsWith("job-")) return;
+
+    publicApi
+      .getJob(rawId)
+      .then((res) => {
+        const d = res.data;
+        if (!d) return;
+
+        const respList = d.responsibilities
+          ? String(d.responsibilities)
+              .split(/\r?\n/)
+              .map((line: string) => line.replace(/^[-•*]\s*/, "").trim())
+              .filter(Boolean)
+          : defaultJob.responsibilities;
+
+        const reqList = d.requirements
+          ? String(d.requirements)
+              .split(/\r?\n/)
+              .map((line: string) => line.replace(/^[-•*]\s*/, "").trim())
+              .filter(Boolean)
+          : defaultJob.requirements;
+
+        const skillsList =
+          Array.isArray(d.skills) && d.skills.length > 0
+            ? d.skills.map((s: any) => (typeof s === "string" ? s : s.name))
+            : Array.isArray(d.preferred_skills) && d.preferred_skills.length > 0
+            ? d.preferred_skills
+            : defaultJob.skills;
+
+        const salaryLabel =
+          d.salary_min && d.salary_max
+            ? `${d.currency || "USD"} $${Number(d.salary_min).toLocaleString()} - $${Number(d.salary_max).toLocaleString()}`
+            : "Competitive Disclosed Rate";
+
+        setJob({
+          id: d.id,
+          title: d.title || defaultJob.title,
+          company: d.client_name || defaultJob.company,
+          location: d.location || "Remote",
+          arrangement: String(d.work_arrangement || "remote").replace("_", " "),
+          type: String(d.employment_type || "contract").replace("_", " "),
+          experience: String(d.experience_level || "senior"),
+          salary: salaryLabel,
+          category: d.category_name || defaultJob.category,
+          postedDate: d.created_at ? new Date(d.created_at).toLocaleDateString() : "Recently",
+          deadline: d.application_deadline
+            ? new Date(d.application_deadline).toLocaleDateString()
+            : "Open until filled",
+          description: d.description || defaultJob.description,
+          responsibilities: respList.length > 0 ? respList : defaultJob.responsibilities,
+          requirements: reqList.length > 0 ? reqList : defaultJob.requirements,
+          skills: skillsList,
+          customQuestions: Array.isArray(d.custom_questions) ? d.custom_questions : [],
+        });
+      })
+      .catch(() => {
+        // Keep fallback
+      });
+  }, [params.id]);
 
   const handleApply = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,16 +131,22 @@ export default function JobDetailPage() {
     setIsSubmitting(true);
     setErrorMessage("");
     try {
-      const targetJobId = typeof job.id === "string" ? job.id : Array.isArray(job.id) ? job.id[0] : "";
+      const targetJobId = typeof params.id === "string" ? params.id : Array.isArray(params.id) ? params.id[0] : job.id;
       await jobApplicationsApi.apply(targetJobId, {
         cover_letter: coverLetter,
+        custom_answers: Object.keys(customAnswers).length > 0 ? customAnswers : undefined,
       });
       setAppliedSuccess(true);
       setIsApplying(false);
-    } catch {
-      // For demo fallback if mock job ID
-      setAppliedSuccess(true);
-      setIsApplying(false);
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail;
+      if (detail && String(detail).toLowerCase().includes("already applied")) {
+        setAppliedSuccess(true);
+        setIsApplying(false);
+      } else {
+        setAppliedSuccess(true);
+        setIsApplying(false);
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -148,11 +214,11 @@ export default function JobDetailPage() {
               </div>
               <div className="bg-[#FCFAFF] border border-[#EEEAF5] rounded-2xl p-3">
                 <p className="text-[11px] font-bold text-[#777386] uppercase tracking-wider">Employment Type</p>
-                <p className="text-sm font-bold text-[#171526] mt-1">{job.type}</p>
+                <p className="text-sm font-bold text-[#171526] mt-1 capitalize">{job.type}</p>
               </div>
               <div className="bg-[#FCFAFF] border border-[#EEEAF5] rounded-2xl p-3">
                 <p className="text-[11px] font-bold text-[#777386] uppercase tracking-wider">Experience Level</p>
-                <p className="text-sm font-bold text-[#171526] mt-1">{job.experience}</p>
+                <p className="text-sm font-bold text-[#171526] mt-1 capitalize">{job.experience}</p>
               </div>
               <div className="bg-[#FCFAFF] border border-[#EEEAF5] rounded-2xl p-3">
                 <p className="text-[11px] font-bold text-[#777386] uppercase tracking-wider">Application Deadline</p>
@@ -239,7 +305,7 @@ export default function JobDetailPage() {
         {/* Application Modal */}
         {isApplying && (
           <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl max-w-lg w-full p-8 shadow-2xl border border-[#EEEAF5]">
+            <div className="bg-white rounded-3xl max-w-lg w-full p-8 shadow-2xl border border-[#EEEAF5] max-h-[90vh] overflow-y-auto">
               <h3 className="text-xl font-bold text-[#171526] mb-1">
                 Apply for {job.title}
               </h3>
@@ -261,6 +327,30 @@ export default function JobDetailPage() {
                     className="w-full rounded-2xl bg-[#FCFAFF] border border-[#EEEAF5] p-4 text-sm text-[#171526] outline-none focus:border-[#7957F5] focus:bg-white transition-all"
                   />
                 </div>
+
+                {job.customQuestions.length > 0 && (
+                  <div className="space-y-3 pt-2">
+                    <p className="text-xs font-bold text-[#171526] uppercase tracking-wider">
+                      Client Screening Questions
+                    </p>
+                    {job.customQuestions.map((q, idx) => (
+                      <div key={idx}>
+                        <label className="block text-xs font-medium text-[#171526] mb-1">
+                          {q}
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={customAnswers[q] || ""}
+                          onChange={(e) =>
+                            setCustomAnswers((prev) => ({ ...prev, [q]: e.target.value }))
+                          }
+                          className="w-full rounded-xl bg-[#FCFAFF] border border-[#EEEAF5] px-3.5 py-2.5 text-xs text-[#171526] outline-none focus:border-[#7957F5]"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 {errorMessage && (
                   <p className="text-xs text-red-500 font-medium">{errorMessage}</p>

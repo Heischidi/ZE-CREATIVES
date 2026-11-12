@@ -45,7 +45,9 @@ class MediaCreate(BaseModel):
     sort_order: int = 0
 
 
-@router.get("/")
+@router.get("")
+@router.get("/", include_in_schema=False)
+@router.get("/projects", include_in_schema=False)
 async def list_my_projects(db: DBSession, current_user: CreativeUser):
     prof_res = await db.execute(select(CreativeProfile.id).where(CreativeProfile.user_id == current_user.id))
     profile_id = prof_res.scalar_one_or_none()
@@ -87,7 +89,9 @@ async def list_my_projects(db: DBSession, current_user: CreativeUser):
     ]
 
 
-@router.post("/", status_code=status.HTTP_201_CREATED)
+@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post("/", status_code=status.HTTP_201_CREATED, include_in_schema=False)
+@router.post("/projects", status_code=status.HTTP_201_CREATED, include_in_schema=False)
 async def create_project(payload: ProjectCreate, db: DBSession, current_user: CreativeUser):
     prof_res = await db.execute(select(CreativeProfile).where(CreativeProfile.user_id == current_user.id))
     profile = prof_res.scalar_one_or_none()
@@ -104,6 +108,9 @@ async def create_project(payload: ProjectCreate, db: DBSession, current_user: Cr
 
 
 @router.patch("/{project_id}")
+@router.put("/{project_id}", include_in_schema=False)
+@router.patch("/projects/{project_id}", include_in_schema=False)
+@router.put("/projects/{project_id}", include_in_schema=False)
 async def update_project(project_id: UUID, payload: ProjectUpdate, db: DBSession, current_user: CreativeUser):
     prof_res = await db.execute(select(CreativeProfile.id).where(CreativeProfile.user_id == current_user.id))
     profile_id = prof_res.scalar_one_or_none()
@@ -127,6 +134,7 @@ async def update_project(project_id: UUID, payload: ProjectUpdate, db: DBSession
 
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/projects/{project_id}", status_code=status.HTTP_204_NO_CONTENT, include_in_schema=False)
 async def delete_project(project_id: UUID, db: DBSession, current_user: CreativeUser):
     prof_res = await db.execute(select(CreativeProfile.id).where(CreativeProfile.user_id == current_user.id))
     profile_id = prof_res.scalar_one_or_none()

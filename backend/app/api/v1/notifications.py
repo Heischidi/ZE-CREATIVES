@@ -10,7 +10,8 @@ from app.models import Notification
 router = APIRouter()
 
 
-@router.get("/")
+@router.get("")
+@router.get("/", include_in_schema=False)
 async def list_my_notifications(db: DBSession, current_user: ActiveUser, unread_only: bool = False):
     query = select(Notification).where(Notification.user_id == current_user.id)
     if unread_only:
@@ -22,10 +23,10 @@ async def list_my_notifications(db: DBSession, current_user: ActiveUser, unread_
     return [
         {
             "id": str(n.id),
-            "type": n.notification_type.value if hasattr(n.notification_type, "value") else str(n.notification_type),
+            "type": n.type.value if hasattr(n.type, "value") else str(n.type),
             "title": n.title,
             "message": n.message,
-            "action_url": n.action_url,
+            "data": n.data or {},
             "is_read": n.is_read,
             "created_at": n.created_at.isoformat() if n.created_at else None,
         }
