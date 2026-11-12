@@ -12,9 +12,10 @@ from sqlalchemy import select, func
 from pydantic import BaseModel, EmailStr, Field
 
 from app.core.deps import DBSession, AdminUser
-from app.core.enums import CreativeApplicationStatus, AccountStatus, UserRole, AuditAction
-from app.models import CreativeApplication, User, UserInvitation, AdminAuditLog
+from app.core.enums import CreativeApplicationStatus, AccountStatus, UserRole, AuditAction, AvailabilityStatus
+from app.models import CreativeApplication, CreativeProfile, User, UserInvitation, AdminAuditLog
 from app.core.security import create_invitation_token, invitation_token_expiry
+from app.core.config import settings
 from app.services.email import email_service
 
 router = APIRouter()
@@ -46,7 +47,8 @@ class ReviewApplicationRequest(BaseModel):
 
 # ─── Public Endpoints ─────────────────────────────────────────────────────────
 
-@router.post("/", status_code=status.HTTP_201_CREATED)
+@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post("/", status_code=status.HTTP_201_CREATED, include_in_schema=False)
 async def submit_creative_application(payload: CreativeApplicationCreate, db: DBSession):
     """
     Public endpoint — anyone can submit a creative application.
@@ -95,7 +97,8 @@ async def submit_creative_application(payload: CreativeApplicationCreate, db: DB
 
 # ─── Admin Endpoints ──────────────────────────────────────────────────────────
 
-@router.get("/")
+@router.get("")
+@router.get("/", include_in_schema=False)
 async def list_creative_applications(
     db: DBSession,
     admin: AdminUser,
@@ -132,8 +135,18 @@ async def list_creative_applications(
                 "first_name": a.first_name,
                 "last_name": a.last_name,
                 "email": a.email,
+                "phone": a.phone,
+                "location": a.location,
                 "professional_headline": a.professional_headline,
-                "creative_categories": a.creative_categories,
+                "bio": a.bio,
+                "years_experience": a.years_experience,
+                "creative_categories": a.creative_categories or [],
+                "skills": a.skills or [],
+                "portfolio_links": a.portfolio_links or [],
+                "social_links": a.social_links or {},
+                "additional_notes": a.additional_notes,
+                "review_notes": a.review_notes,
+                "rejection_reason": a.rejection_reason,
                 "status": a.status.value,
                 "created_at": a.created_at.isoformat(),
                 "reviewed_at": a.reviewed_at.isoformat() if a.reviewed_at else None,
@@ -201,17 +214,46 @@ async def review_creative_application(
 
     if payload.action == "approve":
         app.status = CreativeApplicationStatus.APPROVED
-        # Provision the user account
-        new_user = User(
-            email=app.email,
-            first_name=app.first_name,
-            last_name=app.last_name,
-            phone=app.phone,
-            role=UserRole.CREATIVE,
-            status=AccountStatus.INVITATION_SENT,
-        )
-        db.add(new_user)
-        await db.flush()
+        # Check if user already exists
+        existing_user = (
+            await db.execute(select(User).where(User.email == app.email.lower()))
+        ).scalar_one_or_none()
+        if existing_user:
+            new_user = existing_user
+        else:
+            new_user = User(
+                email=app.email.lower(),
+                first_name=app.first_name,
+                last_name=app.last_name,
+                phone=app.phone,
+                role=UserRole.CREATIVE,
+                status=AccountStatus.INVITATION_SENT,
+            )
+            db.add(new_user)
+            await db.flush()
+
+        # Provision initial CreativeProfile if not present
+        existing_profile = (
+            await db.execute(select(CreativeProfile).where(CreativeProfile.user_id == new_user.id))
+        ).scalar_one_or_none()
+        if not existing_profile:
+            first_link = (app.portfolio_links or [None])[0]
+            socials = app.social_links or {}
+            profile = CreativeProfile(
+                user_id=new_user.id,
+                professional_headline=app.professional_headline,
+                bio=app.bio,
+                location=app.location,
+                years_experience=app.years_experience,
+                availability=AvailabilityStatus.AVAILABLE,
+                is_public=True,
+                website_url=first_link or socials.get("website"),
+                behance_url=socials.get("behance"),
+                dribbble_url=socials.get("dribbble"),
+                instagram_url=socials.get("instagram"),
+                linkedin_url=socials.get("linkedin"),
+            )
+            db.add(profile)
 
         # Create invitation token
         raw_token, token_hash = create_invitation_token()
@@ -223,9 +265,6 @@ async def review_creative_application(
         )
         db.add(invitation)
         app.provisioned_user_id = new_user.id
-
-        # Update user status to invitation_sent
-        new_user.status = AccountStatus.INVITATION_SENT
 
         # Audit log
         log = AdminAuditLog(
@@ -243,7 +282,16 @@ async def review_creative_application(
         await email_service.send_application_status(app.email, app.first_name, "approved")
         await email_service.send_invitation(app.email, app.first_name, raw_token, "creative")
 
-        return {"message": f"Application approved. Account created and invitation sent to {app.email}."}
+        activation_url = f"{settings.frontend_url}/activate?token={raw_token}"
+        return {
+            "message": f"Application approved. Account created and invitation sent to {app.email}.",
+            "user_id": str(new_user.id),
+            "activation_url": activation_url,
+        }
+
+    elif payload.action == "under_review":
+        app.status = CreativeApplicationStatus.UNDER_REVIEW
+        return {"message": "Application marked as under review."}
 
     elif payload.action == "reject":
         app.status = CreativeApplicationStatus.REJECTED

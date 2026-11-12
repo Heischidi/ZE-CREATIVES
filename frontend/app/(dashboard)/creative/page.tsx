@@ -1,7 +1,9 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useAuthStore, getDashboardRoute } from "@/store/auth";
 import {
   Sparkles,
   Eye,
@@ -97,6 +99,25 @@ const initialProjects: CreativeProject[] = [
 ];
 
 export default function CreativeDashboardPage() {
+  const router = useRouter();
+  const { isAuthenticated, user } = useAuthStore();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+    if (!isAuthenticated || !user) {
+      router.replace("/sign-in");
+      return;
+    }
+    if (user.role !== "creative") {
+      router.replace(getDashboardRoute(user.role));
+    }
+  }, [mounted, isAuthenticated, user, router]);
+
   const [activeTab, setActiveTab] = useState<"applications" | "portfolio" | "profile">("applications");
   const [availability, setAvailability] = useState("Available Now");
   const [projects, setProjects] = useState<CreativeProject[]>(initialProjects);
@@ -133,6 +154,10 @@ export default function CreativeDashboardPage() {
     setNewTitle("");
     setNewMediaUrl("");
   };
+
+  if (!mounted || !isAuthenticated || user?.role !== "creative") {
+    return null;
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-[#FCFAFF]">

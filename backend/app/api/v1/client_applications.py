@@ -10,6 +10,7 @@ from app.core.deps import DBSession, AdminUser
 from app.core.enums import CreativeApplicationStatus, AccountStatus, UserRole, AuditAction
 from app.models import ClientApplication, User, UserInvitation, ClientProfile, AdminAuditLog
 from app.core.security import create_invitation_token, invitation_token_expiry
+from app.core.config import settings
 from app.services.email import email_service
 
 router = APIRouter()
@@ -35,7 +36,8 @@ class ReviewClientApplicationRequest(BaseModel):
     rejection_reason: Optional[str] = None
 
 
-@router.post("/", status_code=status.HTTP_201_CREATED)
+@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post("/", status_code=status.HTTP_201_CREATED, include_in_schema=False)
 async def submit_client_application(payload: ClientApplicationCreate, db: DBSession):
     """
     Public endpoint — clients submit access request.
@@ -84,7 +86,8 @@ async def submit_client_application(payload: ClientApplicationCreate, db: DBSess
     }
 
 
-@router.get("/")
+@router.get("")
+@router.get("/", include_in_schema=False)
 async def list_client_applications(
     db: DBSession,
     admin: AdminUser,
@@ -131,8 +134,12 @@ async def list_client_applications(
                 "company_size": a.company_size,
                 "location": a.location,
                 "intended_use": a.intended_use,
+                "additional_notes": a.additional_notes,
+                "review_notes": a.review_notes,
+                "rejection_reason": a.rejection_reason,
                 "status": a.status.value if hasattr(a.status, "value") else str(a.status),
                 "created_at": a.created_at.isoformat() if a.created_at else None,
+                "reviewed_at": a.reviewed_at.isoformat() if a.reviewed_at else None,
             }
             for a in items
         ],
@@ -187,30 +194,41 @@ async def review_client_application(
     if payload.action == "approve":
         app_obj.status = CreativeApplicationStatus.APPROVED
 
-        # Create user account with role CLIENT and status INVITATION_SENT
-        new_user = User(
-            email=app_obj.email,
-            first_name=app_obj.first_name,
-            last_name=app_obj.last_name,
-            phone=app_obj.phone,
-            role=UserRole.CLIENT,
-            status=AccountStatus.INVITATION_SENT,
-        )
-        db.add(new_user)
-        await db.flush()
+        existing_user = (
+            await db.execute(select(User).where(User.email == app_obj.email.lower()))
+        ).scalar_one_or_none()
+        if existing_user:
+            new_user = existing_user
+        else:
+            new_user = User(
+                email=app_obj.email.lower(),
+                first_name=app_obj.first_name,
+                last_name=app_obj.last_name,
+                phone=app_obj.phone,
+                role=UserRole.CLIENT,
+                status=AccountStatus.INVITATION_SENT,
+            )
+            db.add(new_user)
+            await db.flush()
 
         app_obj.provisioned_user_id = new_user.id
 
-        # Create client profile
-        client_profile = ClientProfile(
-            user_id=new_user.id,
-            organisation_name=app_obj.organisation_name,
-            industry=app_obj.industry,
-            company_size=app_obj.company_size,
-            website_url=app_obj.website,
-            location=app_obj.location,
-        )
-        db.add(client_profile)
+        # Create client profile if not present
+        existing_profile = (
+            await db.execute(select(ClientProfile).where(ClientProfile.user_id == new_user.id))
+        ).scalar_one_or_none()
+        if not existing_profile:
+            client_profile = ClientProfile(
+                user_id=new_user.id,
+                organisation_name=app_obj.organisation_name,
+                industry=app_obj.industry,
+                company_size=app_obj.company_size,
+                website_url=app_obj.website,
+                location=app_obj.location,
+                description=app_obj.intended_use,
+                is_verified=True,
+            )
+            db.add(client_profile)
 
         # Generate invitation token
         raw_token, token_hash = create_invitation_token()
@@ -225,9 +243,10 @@ async def review_client_application(
         # Audit log
         audit = AdminAuditLog(
             admin_id=admin.id,
-            action=AuditAction.APPROVE_APPLICATION,
-            target_type="client_application",
-            target_id=app_obj.id,
+            action=AuditAction.USER_APPROVED,
+            target_user_id=new_user.id,
+            target_resource_type="client_application",
+            target_resource_id=str(app_obj.id),
             description=f"Approved client application for {app_obj.organisation_name} ({app_obj.email})",
         )
         db.add(audit)
@@ -237,13 +256,15 @@ async def review_client_application(
         await email_service.send_invitation(
             to_email=new_user.email,
             first_name=new_user.first_name,
-            invite_token=raw_token,
+            raw_token=raw_token,
             role="client",
         )
 
+        activation_url = f"{settings.frontend_url}/activate?token={raw_token}"
         return {
             "message": "Client application approved and invitation sent.",
             "user_id": str(new_user.id),
+            "activation_url": activation_url,
         }
 
     elif payload.action == "reject":
@@ -252,14 +273,22 @@ async def review_client_application(
 
         audit = AdminAuditLog(
             admin_id=admin.id,
-            action=AuditAction.REJECT_APPLICATION,
-            target_type="client_application",
-            target_id=app_obj.id,
+            action=AuditAction.USER_REJECTED,
+            target_resource_type="client_application",
+            target_resource_id=str(app_obj.id),
             description=f"Rejected client application for {app_obj.organisation_name} ({app_obj.email})",
         )
         db.add(audit)
         await db.flush()
 
         return {"message": "Client application rejected."}
+
+    elif payload.action == "under_review":
+        app_obj.status = CreativeApplicationStatus.UNDER_REVIEW
+        return {"message": "Client application marked as under review."}
+
+    elif payload.action == "request_info":
+        app_obj.status = CreativeApplicationStatus.MORE_INFO_REQUESTED
+        return {"message": "Client application marked as needing more information."}
 
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid action.")

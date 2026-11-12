@@ -1,7 +1,9 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useAuthStore, getDashboardRoute } from "@/store/auth";
 import {
   Briefcase,
   Users,
@@ -130,6 +132,25 @@ const initialApplicants = [
 ];
 
 export default function ClientDashboardPage() {
+  const router = useRouter();
+  const { isAuthenticated, user } = useAuthStore();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+    if (!isAuthenticated || !user) {
+      router.replace("/sign-in");
+      return;
+    }
+    if (user.role !== "client") {
+      router.replace(getDashboardRoute(user.role));
+    }
+  }, [mounted, isAuthenticated, user, router]);
+
   const [activeTab, setActiveTab] = useState<"jobs" | "applicants" | "marketplace">("jobs");
   const [expandedJobId, setExpandedJobId] = useState<string | null>("job-1");
   const [isPostingModalOpen, setIsPostingModalOpen] = useState(false);
@@ -191,6 +212,10 @@ export default function ClientDashboardPage() {
     setNewJobWhatWeWant("");
     setNewJobRequirements("");
   };
+
+  if (!mounted || !isAuthenticated || user?.role !== "client") {
+    return null;
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-[#FCFAFF]">

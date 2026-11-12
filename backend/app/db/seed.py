@@ -14,11 +14,14 @@ from app.core.config import settings
 from app.core.security import get_password_hash
 from app.core.enums import (
     UserRole, AccountStatus, AvailabilityStatus, JobStatus,
-    WorkArrangement, EmploymentType, ExperienceLevel
+    WorkArrangement, EmploymentType, ExperienceLevel,
+    CreativeApplicationStatus, AuditAction
 )
 from app.models import (
     User, CreativeCategory, Skill, SubscriptionPlan,
-    CreativeProfile, ClientProfile, Job
+    CreativeProfile, ClientProfile, Job,
+    CreativeApplication, ClientApplication, PortfolioProject,
+    Announcement, AdminAuditLog
 )
 from sqlalchemy import select
 import logging
@@ -252,6 +255,172 @@ async def seed():
             logger.info("✅ Verified Client & sample job seeded: client@zecreatives.com")
         else:
             logger.info("ℹ️  Verified Client already exists: client@zecreatives.com")
+
+        # ─── Ensure Elena has Sample Portfolio Projects ─────────────────────
+        elena_user = await db.scalar(select(User).where(User.email == "elena@zecreatives.com"))
+        if elena_user:
+            elena_profile = await db.scalar(select(CreativeProfile).where(CreativeProfile.user_id == elena_user.id))
+            if elena_profile:
+                existing_proj = await db.scalar(select(PortfolioProject).where(PortfolioProject.profile_id == elena_profile.id))
+                if not existing_proj:
+                    db.add_all([
+                        PortfolioProject(
+                            profile_id=elena_profile.id,
+                            title="Aether OS — Spatial Computing Design System",
+                            description="End-to-end typographic and spatial UI design system for next-generation AR/VR hardware.",
+                            cover_image_url="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&auto=format&fit=crop&q=80",
+                            project_url="https://elenarostova.design/aether-os",
+                            tools_used=["Figma", "Cinema 4D", "After Effects"],
+                            is_featured=True,
+                            is_public=True,
+                            sort_order=1,
+                        ),
+                        PortfolioProject(
+                            profile_id=elena_profile.id,
+                            title="Vespera Global Rebrand & Kinetic Identity",
+                            description="Global brand architecture, bespoke variable typeface Direction, and 3D motion guidelines for fintech unicorn Vespera.",
+                            cover_image_url="https://images.unsplash.com/photo-1634017839464-5c339ebe3cb4?w=800&auto=format&fit=crop&q=80",
+                            project_url="https://elenarostova.design/vespera",
+                            tools_used=["Illustrator", "Glyphs", "Blender", "Figma"],
+                            is_featured=True,
+                            is_public=True,
+                            sort_order=2,
+                        ),
+                    ])
+                    logger.info("✅ Sample portfolio projects seeded for Elena.")
+
+        # ─── Sample Creative Applications (Vetting Queue) ────────────────────
+        sample_creative_apps = [
+            {
+                "first_name": "Soren",
+                "last_name": "Lindqvist",
+                "email": "soren@nordicvisuals.io",
+                "phone": "+46 70 421 8890",
+                "location": "Stockholm, Sweden",
+                "professional_headline": "Principal 3D Motion Director & Real-Time Shader Artist",
+                "bio": "10+ years directing procedural 3D motion systems, Houdini simulations, and WebGL/Three.js interactive brand worlds for luxury automotive and fashion houses.",
+                "years_experience": 10,
+                "skills": ["Houdini", "Cinema 4D", "Redshift", "GLSL Shaders", "Unreal Engine 5", "Art Direction"],
+                "portfolio_links": ["https://nordicvisuals.io", "https://behance.net/sorenlindqvist"],
+                "social_links": {"instagram": "https://instagram.com/soren.motion", "linkedin": "https://linkedin.com/in/sorenlindqvist"},
+                "additional_notes": "Previously led 3D brand motion for Polestar and Acne Studios digital showcases.",
+                "status": CreativeApplicationStatus.PENDING,
+            },
+            {
+                "first_name": "Maya",
+                "last_name": "Patel",
+                "email": "maya.patel@studio-k.design",
+                "phone": "+44 7700 900412",
+                "location": "London, United Kingdom",
+                "professional_headline": "Staff Product Designer & Design Systems Architect",
+                "bio": "Specializing in multi-brand token architectures, AI-native creative workflows, and zero-to-one fintech and developer tool interfaces.",
+                "years_experience": 7,
+                "skills": ["Figma", "Design Systems", "React / TypeScript", "Prototyping", "User Research"],
+                "portfolio_links": ["https://mayapatel.design", "https://dribbble.com/mayapatel"],
+                "social_links": {"github": "https://github.com/mayapatel-ui", "linkedin": "https://linkedin.com/in/mayapatel"},
+                "additional_notes": "Speaker at Config and Into Design Systems.",
+                "status": CreativeApplicationStatus.UNDER_REVIEW,
+                "review_notes": "Strong systems architecture background; verifying live Figma token library sample.",
+            },
+            {
+                "first_name": "Gabriel",
+                "last_name": "Santos",
+                "email": "gabriel@cinemaverve.com",
+                "phone": "+55 11 98821 4401",
+                "location": "São Paulo, Brazil",
+                "professional_headline": "Commercial Film Director & Colorist",
+                "bio": "Award-winning commercial director and DaVinci Resolve senior colorist crafting emotionally resonant campaign films and sonic-visual narratives.",
+                "years_experience": 9,
+                "skills": ["Directing", "Cinematography", "DaVinci Resolve", "35mm Film", "Sound Design"],
+                "portfolio_links": ["https://cinemaverve.com/reels"],
+                "social_links": {"vimeo": "https://vimeo.com/gabrielsantos"},
+                "additional_notes": "Cannes Lions Shortlist 2025 in Film Craft.",
+                "status": CreativeApplicationStatus.PENDING,
+            },
+        ]
+        for app_data in sample_creative_apps:
+            existing_app = await db.scalar(
+                select(CreativeApplication).where(CreativeApplication.email == app_data["email"])
+            )
+            if not existing_app:
+                db.add(CreativeApplication(**app_data))
+        logger.info("✅ Sample Creative vetting applications seeded.")
+
+        # ─── Sample Client Applications (Org Vetting Queue) ──────────────────
+        sample_client_apps = [
+            {
+                "first_name": "Claire",
+                "last_name": "Dubois",
+                "email": "claire@hyperionrobotics.ai",
+                "phone": "+1 415 890 2310",
+                "organisation_name": "Hyperion Robotics AI",
+                "industry": "AI & Robotics",
+                "website": "https://hyperionrobotics.ai",
+                "company_size": "51-200",
+                "location": "San Francisco, CA",
+                "intended_use": "Hiring a fractional Creative Director, 3D industrial visualizers, and a senior UI/UX team for our upcoming humanoid product launch.",
+                "additional_notes": "Series B backed ($65M). Immediate budget allocated for Q4 creative retainers.",
+                "status": CreativeApplicationStatus.PENDING,
+            },
+            {
+                "first_name": "Henri",
+                "last_name": "Laurent",
+                "email": "henri@maisonverre.paris",
+                "phone": "+33 1 42 68 55 10",
+                "organisation_name": "Maison Verre Paris",
+                "industry": "Luxury & Editorial Fashion",
+                "website": "https://maisonverre.paris",
+                "company_size": "11-50",
+                "location": "Paris, France",
+                "intended_use": "Commissioning editorial photographers, set designers, and digital lookbook art directors for our Autumn/Winter campaign.",
+                "additional_notes": "Looking for vetted European and international visual talent.",
+                "status": CreativeApplicationStatus.UNDER_REVIEW,
+                "review_notes": "Corporate domain and luxury house registry verified.",
+            },
+            {
+                "first_name": "Devon",
+                "last_name": "Brooks",
+                "email": "devon@aetherlabs.vc",
+                "phone": "+1 212 555 0194",
+                "organisation_name": "Aether Venture Studio",
+                "industry": "Venture Capital & Web3",
+                "website": "https://aetherlabs.vc",
+                "company_size": "11-50",
+                "location": "New York, NY",
+                "intended_use": "Recruiting founding brand & product designers across 6 portfolio startups.",
+                "additional_notes": "Seeking ongoing access to Ze: Creatives' top 5% product and brand talent pool.",
+                "status": CreativeApplicationStatus.PENDING,
+            },
+        ]
+        for capp_data in sample_client_apps:
+            existing_capp = await db.scalar(
+                select(ClientApplication).where(ClientApplication.email == capp_data["email"])
+            )
+            if not existing_capp:
+                db.add(ClientApplication(**capp_data))
+        logger.info("✅ Sample Client organisation vetting applications seeded.")
+
+        # ─── Sample Announcement & Audit Log ─────────────────────────────────
+        admin_obj = await db.scalar(select(User).where(User.email == settings.ADMIN_SEED_EMAIL))
+        if admin_obj:
+            existing_ann = await db.scalar(select(Announcement))
+            if not existing_ann:
+                db.add(Announcement(
+                    title="Ze: Creatives Governance v2.4 — Strict Portfolio & Enterprise Vetting Active",
+                    content="All new creative and client applications now pass through our 4-point manual screening matrix before invitation tokens are issued.",
+                    target_roles=["creative", "client"],
+                    is_active=True,
+                    created_by_id=admin_obj.id,
+                ))
+            existing_log = await db.scalar(select(AdminAuditLog))
+            if not existing_log:
+                db.add(AdminAuditLog(
+                    admin_id=admin_obj.id,
+                    action=AuditAction.SETTINGS_UPDATED,
+                    target_resource_type="platform_governance",
+                    target_resource_id="vetting_matrix_v2",
+                    description="Activated strict role isolation and 4-point vetting matrix on Admin Command Center.",
+                ))
 
         await db.commit()
         logger.info("🎉 Database seeding complete.")

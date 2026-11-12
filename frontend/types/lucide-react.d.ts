@@ -101,6 +101,14 @@ declare module "lucide-react" {
   export const Maximize2: LucideIcon;
   export const Volume2: LucideIcon;
   export const VolumeX: LucideIcon;
+  export const AlertTriangle: LucideIcon;
+  export const Copy: LucideIcon;
+  export const Megaphone: LucideIcon;
+  export const Unlock: LucideIcon;
+  export const Activity: LucideIcon;
+  export const Shield: LucideIcon;
+  export const Terminal: LucideIcon;
+  export const Database: LucideIcon;
 
   const icons: Record<string, LucideIcon>;
   export default icons;

@@ -167,6 +167,15 @@ export const adminApi = {
   createAnnouncement: (data: Record<string, unknown>) =>
     api.post("/admin/announcements", data),
   listAnnouncements: () => api.get("/admin/announcements"),
+  getCreatives: () => api.get("/admin/creatives"),
+  updateCreative: (userId: string, data: Record<string, unknown>) =>
+    api.patch(`/admin/creatives/${userId}`, data),
+  getClients: () => api.get("/admin/clients"),
+  updateClient: (userId: string, data: Record<string, unknown>) =>
+    api.patch(`/admin/clients/${userId}`, data),
+  getJobs: () => api.get("/admin/jobs"),
+  moderateJob: (jobId: string, data: Record<string, unknown>) =>
+    api.patch(`/admin/jobs/${jobId}`, data),
 };
 
 // ─── Jobs (client) ────────────────────────────────────────────────────────────
