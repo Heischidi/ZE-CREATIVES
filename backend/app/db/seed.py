@@ -15,12 +15,14 @@ from app.core.security import get_password_hash
 from app.core.enums import (
     UserRole, AccountStatus, AvailabilityStatus, JobStatus,
     WorkArrangement, EmploymentType, ExperienceLevel,
-    CreativeApplicationStatus, AuditAction
+    CreativeApplicationStatus, AuditAction, ApplicationStatus
 )
 from app.models import (
     User, CreativeCategory, Skill, SubscriptionPlan,
-    CreativeProfile, ClientProfile, Job,
+    CreativeProfile, CreativeProfileSkill, ClientProfile, Job,
+    JobApplication, ApplicationStatusHistory,
     CreativeApplication, ClientApplication, PortfolioProject,
+    Conversation, ConversationParticipant, Message,
     Announcement, AdminAuditLog
 )
 from sqlalchemy import select
@@ -288,6 +290,184 @@ async def seed():
                         ),
                     ])
                     logger.info("✅ Sample portfolio projects seeded for Elena.")
+
+                existing_elena_skill = await db.scalar(
+                    select(CreativeProfileSkill).where(CreativeProfileSkill.profile_id == elena_profile.id)
+                )
+                if not existing_elena_skill:
+                    for sk_name in ["Figma", "Design Systems", "Brand Architecture", "Typography", "Cinema 4D"]:
+                        db.add(CreativeProfileSkill(profile_id=elena_profile.id, custom_skill=sk_name, proficiency_level=5))
+
+        # ─── Seed Second Active Creative (Liam Takahashi) ───────────────────
+        liam_user = await db.scalar(select(User).where(User.email == "liam@zecreatives.com"))
+        if not liam_user:
+            liam_user = User(
+                email="liam@zecreatives.com",
+                hashed_password=get_password_hash("CreativeZe2026!"),
+                first_name="Liam",
+                last_name="Takahashi",
+                role=UserRole.CREATIVE,
+                status=AccountStatus.ACTIVE,
+                is_email_verified=True,
+            )
+            db.add(liam_user)
+            await db.flush()
+
+            liam_profile = CreativeProfile(
+                user_id=liam_user.id,
+                professional_headline="Principal 3D Motion Artist & Creative Technologist",
+                bio="9+ years building procedural Houdini simulations, real-time Unreal Engine 5 visuals, and kinetic product reveal films for global hardware and automotive brands.",
+                location="Tokyo, Japan (Remote)",
+                country="Japan",
+                years_experience=9,
+                hourly_rate_min=110.0,
+                hourly_rate_max=165.0,
+                currency="USD",
+                availability=AvailabilityStatus.AVAILABLE,
+                is_public=True,
+                onboarding_completed=True,
+                onboarding_step=7,
+                website_url="https://liamtakahashi.studio",
+                behance_url="https://behance.net/liamtakahashi",
+            )
+            db.add(liam_profile)
+            await db.flush()
+
+            for sk_name in ["Houdini", "Cinema 4D", "Redshift", "Unreal Engine 5", "After Effects"]:
+                db.add(CreativeProfileSkill(profile_id=liam_profile.id, custom_skill=sk_name, proficiency_level=5))
+
+            db.add(
+                PortfolioProject(
+                    profile_id=liam_profile.id,
+                    title="Kuroshio — Procedural 3D Launch Film & Shader System",
+                    description="Houdini fluid and rigid-body simulation pipeline for a flagship luxury chronograph global launch.",
+                    cover_image_url="https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=800&auto=format&fit=crop&q=80",
+                    project_url="https://liamtakahashi.studio/kuroshio",
+                    tools_used=["Houdini", "Redshift", "Nuke"],
+                    is_featured=True,
+                    is_public=True,
+                    sort_order=1,
+                )
+            )
+            logger.info("✅ Second verified Creative seeded: liam@zecreatives.com")
+
+        # ─── Ensure Client has Second Job, Applications & Conversation ──────
+        client_user_obj = await db.scalar(select(User).where(User.email == "client@zecreatives.com"))
+        if client_user_obj:
+            client_prof = await db.scalar(select(ClientProfile).where(ClientProfile.user_id == client_user_obj.id))
+            if client_prof:
+                client_jobs = (await db.execute(select(Job).where(Job.client_id == client_prof.id))).scalars().all()
+                motion_cat = await db.scalar(
+                    select(CreativeCategory).where(CreativeCategory.slug == "animation-motion-graphics")
+                )
+                if len(client_jobs) < 2:
+                    second_job = Job(
+                        client_id=client_prof.id,
+                        category_id=motion_cat.id if motion_cat else None,
+                        title="Senior 3D Motion & Houdini Visualist",
+                        description="We are looking for a master 3D motion director to craft hero product reveal sequences, procedural simulations, and kinetic brand identities for our flagship technology clients.",
+                        responsibilities="Direct and execute 3D launch films; Build procedural setups in Houdini and Cinema 4D; Partner with sound designers and brand directors.",
+                        requirements="6+ years in high-end motion studios; Deep mastery of Houdini, Cinema 4D, and Redshift/Octane; Strong reel demonstrating lighting and kinetic pacing.",
+                        preferred_skills="Houdini, Cinema 4D, Redshift, Octane, Unreal Engine 5, After Effects",
+                        location="Remote / New York, NY",
+                        country="United States",
+                        work_arrangement=WorkArrangement.REMOTE,
+                        employment_type=EmploymentType.CONTRACT,
+                        experience_level=ExperienceLevel.SENIOR,
+                        salary_min=125000.0,
+                        salary_max=155000.0,
+                        currency="USD",
+                        is_salary_disclosed=True,
+                        status=JobStatus.ACTIVE,
+                        is_featured=False,
+                        views_count=184,
+                        custom_questions=[
+                            "Share a link to your primary 3D/motion showreel with timecodes.",
+                            "Which render engines and simulation tools are in your daily pipeline?",
+                        ],
+                    )
+                    db.add(second_job)
+                    await db.flush()
+                    client_jobs.append(second_job)
+
+                # Seed sample JobApplications from Elena & Liam
+                primary_job = client_jobs[0] if client_jobs else None
+                secondary_job = client_jobs[1] if len(client_jobs) > 1 else primary_job
+                elena_prof = await db.scalar(select(CreativeProfile).where(CreativeProfile.user_id == elena_user.id)) if elena_user else None
+                liam_prof = await db.scalar(select(CreativeProfile).where(CreativeProfile.user_id == liam_user.id)) if liam_user else None
+
+                if primary_job and elena_prof:
+                    existing_ja1 = await db.scalar(
+                        select(JobApplication).where(
+                            JobApplication.job_id == primary_job.id,
+                            JobApplication.creative_profile_id == elena_prof.id,
+                        )
+                    )
+                    if not existing_ja1:
+                        ja1 = JobApplication(
+                            job_id=primary_job.id,
+                            creative_profile_id=elena_prof.id,
+                            cover_letter="I have spent the last 8 years leading multi-product design systems and kinetic brand architectures for high-growth ventures. My recent Aether OS and Vespera systems align directly with Apex's vision.",
+                            custom_answers={
+                                "Design System Scale": "Architected 420+ component multi-brand token library across web, iOS, and spatial computing.",
+                                "Availability": "Available to start immediately for full-time or lead retainer.",
+                            },
+                            status=ApplicationStatus.SHORTLISTED,
+                            client_notes="Exceptional typography and systems portfolio. Top candidate for the Lead role.",
+                            is_viewed=True,
+                        )
+                        db.add(ja1)
+                        primary_job.applications_count = (primary_job.applications_count or 0) + 1
+                        primary_job.views_count = max(primary_job.views_count or 0, 312)
+
+                if secondary_job and liam_prof:
+                    existing_ja2 = await db.scalar(
+                        select(JobApplication).where(
+                            JobApplication.job_id == secondary_job.id,
+                            JobApplication.creative_profile_id == liam_prof.id,
+                        )
+                    )
+                    if not existing_ja2:
+                        ja2 = JobApplication(
+                            job_id=secondary_job.id,
+                            creative_profile_id=liam_prof.id,
+                            cover_letter="My Houdini + Redshift pipeline is built specifically for tactile luxury and hardware reveal films. Excited to bring procedural R&D to Apex Creative & Motion Studio.",
+                            custom_answers={
+                                "Showreel": "https://liamtakahashi.studio/kuroshio (00:15 - 01:40 procedural fluid & rigid body shots)",
+                                "Pipeline": "Houdini 20.5, Cinema 4D, Redshift, Unreal Engine 5.4, Nuke",
+                            },
+                            status=ApplicationStatus.SUBMITTED,
+                            is_viewed=False,
+                        )
+                        db.add(ja2)
+                        secondary_job.applications_count = (secondary_job.applications_count or 0) + 1
+
+                # Seed sample Conversation between Marcus (Client) and Elena (Creative)
+                if elena_user:
+                    existing_conv = await db.scalar(select(Conversation))
+                    if not existing_conv:
+                        conv = Conversation(
+                            subject="Shortlisted: Lead Product & Brand Systems Designer",
+                        )
+                        db.add(conv)
+                        await db.flush()
+                        db.add_all([
+                            ConversationParticipant(conversation_id=conv.id, user_id=client_user_obj.id),
+                            ConversationParticipant(conversation_id=conv.id, user_id=elena_user.id),
+                        ])
+                        db.add_all([
+                            Message(
+                                conversation_id=conv.id,
+                                sender_id=client_user_obj.id,
+                                content="Hi Elena — we loved your Aether OS and Vespera case studies. We have shortlisted you for the Lead Product & Brand Systems Designer role at Apex. Are you free Thursday for a 30-minute portfolio walkthrough?",
+                            ),
+                            Message(
+                                conversation_id=conv.id,
+                                sender_id=elena_user.id,
+                                content="Thank you Marcus! Thursday afternoon works great for me. I will bring the live Figma token architecture and 3D motion guidelines to walk through with the team.",
+                            ),
+                        ])
+                        logger.info("✅ Sample Client <-> Creative conversation seeded.")
 
         # ─── Sample Creative Applications (Vetting Queue) ────────────────────
         sample_creative_apps = [

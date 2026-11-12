@@ -8,7 +8,7 @@ from sqlalchemy.orm import selectinload, joinedload
 
 from app.core.deps import DBSession, ClientUser, ActiveUser
 from app.core.enums import JobStatus, WorkArrangement, EmploymentType, ExperienceLevel
-from app.models import Job, JobSkill, ClientProfile, CreativeCategory, Skill
+from app.models import Job, JobSkill, JobApplication, ClientProfile, CreativeCategory, Skill
 
 router = APIRouter()
 
@@ -53,9 +53,15 @@ class JobUpdate(BaseModel):
     is_salary_disclosed: Optional[bool] = None
     application_deadline: Optional[datetime] = None
     custom_questions: Optional[list] = None
+    status: Optional[JobStatus] = None
 
 
-@router.post("/", status_code=status.HTTP_201_CREATED)
+class JobStatusUpdateRequest(BaseModel):
+    status: JobStatus
+
+
+@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post("/", status_code=status.HTTP_201_CREATED, include_in_schema=False)
 async def create_job(payload: JobCreate, db: DBSession, current_user: ClientUser):
     prof_res = await db.execute(select(ClientProfile).where(ClientProfile.user_id == current_user.id))
     client_profile = prof_res.scalar_one_or_none()
@@ -85,13 +91,15 @@ async def create_job(payload: JobCreate, db: DBSession, current_user: ClientUser
     return {"message": "Job created successfully.", "id": str(job.id), "status": job.status.value}
 
 
+@router.get("")
+@router.get("/", include_in_schema=False)
 @router.get("/client")
 async def list_my_posted_jobs(
     db: DBSession,
     current_user: ClientUser,
     status_filter: Optional[str] = Query(None, alias="status"),
     page: int = Query(1, ge=1),
-    per_page: int = Query(20, ge=1, le=100),
+    per_page: int = Query(50, ge=1, le=100),
 ):
     prof_res = await db.execute(select(ClientProfile.id).where(ClientProfile.user_id == current_user.id))
     client_id = prof_res.scalar_one_or_none()
@@ -116,25 +124,44 @@ async def list_my_posted_jobs(
     )
     jobs = result.scalars().all()
 
+    items = []
+    for j in jobs:
+        real_apps_count = await db.scalar(
+            select(func.count(JobApplication.id)).where(JobApplication.job_id == j.id)
+        )
+        items.append({
+            "id": str(j.id),
+            "title": j.title,
+            "description": j.description,
+            "responsibilities": j.responsibilities,
+            "requirements": j.requirements,
+            "preferred_skills": j.preferred_skills,
+            "location": j.location,
+            "country": j.country,
+            "status": j.status.value if hasattr(j.status, "value") else str(j.status),
+            "category_id": str(j.category_id) if j.category_id else None,
+            "category": j.category.name if j.category else "Design & Creative",
+            "work_arrangement": j.work_arrangement.value if j.work_arrangement else "remote",
+            "employment_type": j.employment_type.value if j.employment_type else "full_time",
+            "experience_level": j.experience_level.value if j.experience_level else "senior",
+            "salary_min": j.salary_min,
+            "salary_max": j.salary_max,
+            "currency": j.currency or "USD",
+            "is_salary_disclosed": j.is_salary_disclosed,
+            "is_featured": j.is_featured,
+            "custom_questions": j.custom_questions or [],
+            "application_deadline": j.application_deadline.isoformat() if j.application_deadline else None,
+            "views_count": j.views_count or 0,
+            "applications_count": real_apps_count if real_apps_count is not None else (j.applications_count or 0),
+            "created_at": j.created_at.isoformat() if j.created_at else None,
+            "published_at": j.published_at.isoformat() if j.published_at else None,
+        })
+
     return {
         "total": total,
         "page": page,
         "per_page": per_page,
-        "items": [
-            {
-                "id": str(j.id),
-                "title": j.title,
-                "status": j.status.value if hasattr(j.status, "value") else str(j.status),
-                "category": j.category.name if j.category else None,
-                "work_arrangement": j.work_arrangement.value if j.work_arrangement else None,
-                "employment_type": j.employment_type.value if j.employment_type else None,
-                "views_count": j.views_count,
-                "applications_count": j.applications_count,
-                "created_at": j.created_at.isoformat() if j.created_at else None,
-                "published_at": j.published_at.isoformat() if j.published_at else None,
-            }
-            for j in jobs
-        ],
+        "items": items,
     }
 
 
@@ -186,6 +213,7 @@ async def get_job_detail(job_id: UUID, db: DBSession, current_user: ActiveUser):
 
 
 @router.patch("/{job_id}")
+@router.put("/{job_id}", include_in_schema=False)
 async def update_job(job_id: UUID, payload: JobUpdate, db: DBSession, current_user: ClientUser):
     prof_res = await db.execute(select(ClientProfile.id).where(ClientProfile.user_id == current_user.id))
     client_id = prof_res.scalar_one_or_none()
@@ -197,8 +225,32 @@ async def update_job(job_id: UUID, payload: JobUpdate, db: DBSession, current_us
     for field, val in payload.model_dump(exclude_unset=True).items():
         setattr(job, field, val)
 
+    if payload.status == JobStatus.ACTIVE and not job.published_at:
+        job.published_at = datetime.now(timezone.utc)
+
     await db.flush()
-    return {"message": "Job updated successfully."}
+    return {"message": "Job updated successfully.", "status": job.status.value}
+
+
+@router.post("/{job_id}/status")
+async def update_job_status(
+    job_id: UUID,
+    payload: JobStatusUpdateRequest,
+    db: DBSession,
+    current_user: ClientUser,
+):
+    prof_res = await db.execute(select(ClientProfile.id).where(ClientProfile.user_id == current_user.id))
+    client_id = prof_res.scalar_one_or_none()
+    res = await db.execute(select(Job).where(Job.id == job_id, Job.client_id == client_id))
+    job = res.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+
+    job.status = payload.status
+    if payload.status == JobStatus.ACTIVE and not job.published_at:
+        job.published_at = datetime.now(timezone.utc)
+    await db.flush()
+    return {"message": f"Job status updated to {job.status.value}.", "status": job.status.value}
 
 
 @router.post("/{job_id}/publish")

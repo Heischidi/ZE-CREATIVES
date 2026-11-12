@@ -8,7 +8,10 @@ from sqlalchemy import select, func
 
 from app.core.deps import DBSession
 from app.core.enums import JobStatus, AccountStatus, UserRole
-from app.models import Job, CreativeProfile, User, CreativeCategory, Skill, SubscriptionPlan
+from app.models import (
+    Job, CreativeProfile, CreativeProfileCategory, CreativeProfileSkill,
+    User, CreativeCategory, Skill, SubscriptionPlan, Announcement
+)
 
 router = APIRouter()
 
@@ -95,7 +98,7 @@ async def list_public_creatives(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
 ):
-    from sqlalchemy.orm import joinedload
+    from sqlalchemy.orm import selectinload, joinedload
     # Only show profiles of ACTIVE users
     query = (
         select(CreativeProfile)
@@ -105,16 +108,23 @@ async def list_public_creatives(
             User.role == UserRole.CREATIVE,
             CreativeProfile.is_public == True,
         )
-        .options(joinedload(CreativeProfile.user), joinedload(CreativeProfile.categories))
+        .options(
+            joinedload(CreativeProfile.user),
+            selectinload(CreativeProfile.categories).selectinload(CreativeProfileCategory.category),
+            selectinload(CreativeProfile.skills).selectinload(CreativeProfileSkill.skill),
+            selectinload(CreativeProfile.portfolio_projects),
+            selectinload(CreativeProfile.work_experiences),
+        )
     )
 
     if availability:
         query = query.where(CreativeProfile.availability == availability)
     if search:
-        query = query.join(User).where(
+        query = query.where(
             User.first_name.ilike(f"%{search}%")
             | User.last_name.ilike(f"%{search}%")
             | CreativeProfile.professional_headline.ilike(f"%{search}%")
+            | CreativeProfile.bio.ilike(f"%{search}%")
         )
 
     result = await db.execute(
@@ -128,7 +138,7 @@ async def list_public_creatives(
         "total": len(profiles),
         "page": page,
         "per_page": per_page,
-        "items": [_format_creative(p) for p in profiles],
+        "items": [_format_creative(p, detailed=True) for p in profiles],
     }
 
 
@@ -147,8 +157,8 @@ async def get_public_creative(profile_id: str, db: DBSession):
         )
         .options(
             joinedload(CreativeProfile.user),
-            selectinload(CreativeProfile.categories),
-            selectinload(CreativeProfile.skills),
+            selectinload(CreativeProfile.categories).selectinload(CreativeProfileCategory.category),
+            selectinload(CreativeProfile.skills).selectinload(CreativeProfileSkill.skill),
             selectinload(CreativeProfile.portfolio_projects),
             selectinload(CreativeProfile.work_experiences),
             selectinload(CreativeProfile.education),
@@ -160,6 +170,29 @@ async def get_public_creative(profile_id: str, db: DBSession):
 
     profile.profile_views = (profile.profile_views or 0) + 1
     return _format_creative(profile, detailed=True)
+
+
+@router.get("/announcements")
+async def list_public_announcements(db: DBSession, role: Optional[str] = None):
+    result = await db.execute(
+        select(Announcement)
+        .where(Announcement.is_active == True)
+        .order_by(Announcement.created_at.desc())
+        .limit(10)
+    )
+    items = result.scalars().all()
+    filtered = []
+    for a in items:
+        if role and a.target_roles and role not in a.target_roles:
+            continue
+        filtered.append({
+            "id": str(a.id),
+            "title": a.title,
+            "content": a.content,
+            "target_roles": a.target_roles,
+            "created_at": a.created_at.isoformat() if a.created_at else None,
+        })
+    return filtered
 
 
 @router.get("/categories")
@@ -249,17 +282,24 @@ def _format_creative(profile: "CreativeProfile", detailed: bool = False) -> dict
     user = profile.user
     data = {
         "id": str(profile.id),
+        "user_id": str(profile.user_id),
         "first_name": user.first_name,
         "last_name": user.last_name,
+        "full_name": f"{user.first_name} {user.last_name}",
         "avatar_url": user.avatar_url,
         "professional_headline": profile.professional_headline,
         "location": profile.location,
+        "country": profile.country,
         "availability": profile.availability.value if profile.availability else None,
         "hourly_rate_min": profile.hourly_rate_min,
         "hourly_rate_max": profile.hourly_rate_max,
         "currency": profile.currency,
         "categories": [
-            {"id": str(c.category_id), "is_primary": c.is_primary}
+            {
+                "id": str(c.category_id),
+                "name": c.category.name if getattr(c, "category", None) else None,
+                "is_primary": c.is_primary,
+            }
             for c in (profile.categories or [])
         ],
         "profile_views": profile.profile_views,
@@ -269,7 +309,11 @@ def _format_creative(profile: "CreativeProfile", detailed: bool = False) -> dict
             "bio": profile.bio,
             "years_experience": profile.years_experience,
             "skills": [
-                {"skill_id": str(s.skill_id) if s.skill_id else None, "custom": s.custom_skill}
+                {
+                    "skill_id": str(s.skill_id) if s.skill_id else None,
+                    "name": s.skill.name if getattr(s, "skill", None) else s.custom_skill,
+                    "custom": s.custom_skill,
+                }
                 for s in (profile.skills or [])
             ],
             "portfolio_projects": [
@@ -277,6 +321,8 @@ def _format_creative(profile: "CreativeProfile", detailed: bool = False) -> dict
                     "id": str(p.id),
                     "title": p.title,
                     "cover_image_url": p.cover_image_url,
+                    "project_url": p.project_url,
+                    "tools_used": p.tools_used or [],
                     "description": p.description,
                 }
                 for p in (profile.portfolio_projects or []) if p.is_public

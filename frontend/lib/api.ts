@@ -119,6 +119,8 @@ export const publicApi = {
   getCreative: (id: string) => api.get(`/public/creatives/${id}`),
   getCategories: () => api.get("/public/categories"),
   getSubscriptionPlans: () => api.get("/public/subscription-plans"),
+  getAnnouncements: (role?: string) =>
+    api.get("/public/announcements", { params: role ? { role } : undefined }),
 };
 
 // ─── Creative Applications ────────────────────────────────────────────────────
@@ -180,18 +182,21 @@ export const adminApi = {
 
 // ─── Jobs (client) ────────────────────────────────────────────────────────────
 export const jobsApi = {
-  list: (params?: Record<string, unknown>) => api.get("/jobs", { params }),
+  list: (params?: Record<string, unknown>) => api.get("/jobs/client", { params }),
   get: (id: string) => api.get(`/jobs/${id}`),
   create: (data: Record<string, unknown>) => api.post("/jobs", data),
   update: (id: string, data: Record<string, unknown>) =>
-    api.put(`/jobs/${id}`, data),
+    api.patch(`/jobs/${id}`, data),
   updateStatus: (id: string, status: string) =>
     api.post(`/jobs/${id}/status`, { status }),
+  publish: (id: string) => api.post(`/jobs/${id}/publish`),
+  close: (id: string) => api.post(`/jobs/${id}/close`),
+  delete: (id: string) => api.delete(`/jobs/${id}`),
   getApplications: (id: string, params?: Record<string, unknown>) =>
-    api.get(`/jobs/${id}/applications`, { params }),
+    api.get(`/job-applications/job/${id}`, { params }),
 };
 
-// ─── Job Applications (creative) ──────────────────────────────────────────────
+// ─── Job Applications (creative & client) ─────────────────────────────────────
 export const jobApplicationsApi = {
   apply: (jobIdOrData: string | Record<string, unknown>, data?: Record<string, unknown>) => {
     if (typeof jobIdOrData === "string") {
@@ -199,10 +204,12 @@ export const jobApplicationsApi = {
     }
     return api.post("/job-applications", jobIdOrData);
   },
-  list: (params?: Record<string, unknown>) =>
-    api.get("/job-applications", { params }),
-  get: (id: string) => api.get(`/job-applications/${id}`),
-  updateStatus: (id: string, data: Record<string, unknown>) =>
+  listMyApplications: () => api.get("/job-applications/creative/me"),
+  listClientApplicants: (params?: Record<string, unknown>) =>
+    api.get("/job-applications/client", { params }),
+  listJobApplicants: (jobId: string) =>
+    api.get(`/job-applications/job/${jobId}`),
+  updateStatus: (id: string, data: { status: string; notes?: string }) =>
     api.post(`/job-applications/${id}/status`, data),
   saveJob: (jobId: string) => api.post(`/jobs/${jobId}/save`),
   unsaveJob: (jobId: string) => api.delete(`/jobs/${jobId}/save`),
@@ -212,11 +219,15 @@ export const jobApplicationsApi = {
 export const creativeProfileApi = {
   get: () => api.get("/creative-profiles/me"),
   update: (data: Record<string, unknown>) =>
-    api.put("/creative-profiles/me", data),
+    api.patch("/creative-profiles/me", data),
   addExperience: (data: Record<string, unknown>) =>
-    api.post("/creative-profiles/me/experience", data),
+    api.post("/creative-profiles/me/work-experience", data),
+  deleteExperience: (id: string) =>
+    api.delete(`/creative-profiles/me/work-experience/${id}`),
   addEducation: (data: Record<string, unknown>) =>
     api.post("/creative-profiles/me/education", data),
+  deleteEducation: (id: string) =>
+    api.delete(`/creative-profiles/me/education/${id}`),
   addPortfolioProject: (data: Record<string, unknown>) =>
     api.post("/portfolio/projects", data),
   updatePortfolioProject: (id: string, data: Record<string, unknown>) =>
@@ -229,13 +240,24 @@ export const creativeProfileApi = {
 export const clientProfileApi = {
   get: () => api.get("/client-profiles/me"),
   update: (data: Record<string, unknown>) =>
-    api.put("/client-profiles/me", data),
+    api.patch("/client-profiles/me", data),
+  inviteCreative: (data: {
+    creative_profile_id: string;
+    job_id?: string;
+    message?: string;
+  }) => api.post("/client-profiles/invite-creative", data),
 };
 
 // ─── Messaging ────────────────────────────────────────────────────────────────
 export const messagingApi = {
   listConversations: () => api.get("/messaging/conversations"),
-  getConversation: (id: string) => api.get(`/messaging/conversations/${id}`),
+  createConversation: (data: {
+    recipient_user_id: string;
+    subject?: string;
+    initial_message: string;
+  }) => api.post("/messaging/conversations", data),
+  getMessages: (conversationId: string) =>
+    api.get(`/messaging/conversations/${conversationId}/messages`),
   sendMessage: (conversationId: string, content: string) =>
     api.post(`/messaging/conversations/${conversationId}/messages`, { content }),
 };
